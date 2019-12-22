@@ -1,14 +1,17 @@
 <!--
- * @Author: lixy
+ * @Author: 李逍遥
  * @Date: 2019-12-16 16:55:25
- * @LastEditTime : 2019-12-22 09:33:08
+ * @LastEditTime : 2019-12-22 20:01:05
  * @LastEditors  : 李逍遥
  * @Description: In User Settings Edit
  * @FilePath: \study_note\django\使用xadmin作为后台.md
  -->
+
 # 使用xadmin替换Django自带后台管理(admin)的环境搭建和配置 #
 
-环境：Python3.7.4+Django2.0+Xadmin2.0+mysqlclient1.4.6  
+文档：<http://sshwsfc.github.io/xadmin/>
+
+环境：Python3.6+Django2.0+Xadmin2.0+mysqlclient1.4.6  
 本次使用的xadmin官方仓库地址为：[xadmin](https://github.com/sshwsfc/xadmin)
 >由于官方版本对Django2.0.x的支持问题(貌似已经不再更新了)，选用了一个修复版([xadmin修复版](https://github.com/vip68/xadmin_bugfix))  
 
@@ -60,8 +63,11 @@
 
 - 安装xadmin  
   使用命令`pip install git+git://github.com/sshwsfc/xadmin.git@django2`  
-  该命令会同事安装以下依赖包：  
+  该命令会安装以下依赖包：  
   ![依赖包](pg1.png)
+
+- 卸载xadmin  
+  使用命令`pip uninstall xadmin`卸载xadmin，依赖包会保留下来；
 
 - 配置项目
   - 将源码[下载](https://github.com/vip68/xadmin_bugfix)到本地
