@@ -1,8 +1,8 @@
 <!--
  * @Author: lixy
  * @Date: 2019-12-16 16:55:25
- * @LastEditTime: 2019-12-16 18:50:07
- * @LastEditors: Please set LastEditors
+ * @LastEditTime : 2019-12-22 09:33:08
+ * @LastEditors  : 李逍遥
  * @Description: In User Settings Edit
  * @FilePath: \study_note\django\使用xadmin作为后台.md
  -->
@@ -21,7 +21,7 @@
     例如：`mkvirtualenv django2.0`  
     然后再`pip install django==2.0`
 
->具体虚拟环境的配置见虚拟环境的文档
+  >具体虚拟环境的配置见虚拟环境的文档
 
 - 安装必要的包
   - 安装MySQLdb  
