@@ -425,10 +425,13 @@ void 0!==arguments[0]&&(br.sequenceConfig=arguments[0]),e=arguments[1]):e=argume
  * @Autor: 逍遥山人
  * @Date: 2019-12-19 17:30:22
  * @LastEditors  : 逍遥山人
- * @LastEditTime : 2019-12-23 11:18:33
+ * @LastEditTime : 2020-01-02 10:01:13
  * @Descriptiong: 
  -->
 <h1 id="mysql%E6%97%A5%E5%B8%B8%E4%BD%BF%E7%94%A8%E7%AC%94%E8%AE%B0">MySQL日常使用笔记</h1>
+<blockquote>
+<p>逍遥山人的MySQL使用笔记，持续更新中</p>
+</blockquote>
 <h2 id="%E8%A1%A8%E7%BB%93%E6%9E%84">表结构</h2>
 <ul>
 <li>
@@ -633,7 +636,151 @@ Index_type 用过的索引方法（BTREE, FULLTEXT, HASH, RTREE）。</p>
 <h2 id="%E6%97%A5%E6%9C%9F%E6%88%96%E6%97%B6%E9%97%B4%E6%93%8D%E4%BD%9C">日期或时间操作</h2>
 <ul>
 <li>
-<p>格式化</p>
+<p>格式化(date_format)<br>
+定义<br>
+DATE_FORMAT() 函数用于以不同的格式显示日期/时间数据。</p>
+<p>语法</p>
+<pre class="hljs"><code><div>DATE_FORMAT(date,format)
+</div></code></pre>
+<blockquote>
+<p>date 参数是合法的日期。format 规定日期/时间的输出格式。</p>
+</blockquote>
+<p>可以使用的格式有：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模式</th>
+<th style="text-align:left">描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">%a</td>
+<td style="text-align:left">缩写星期名</td>
+</tr>
+<tr>
+<td style="text-align:left">%b</td>
+<td style="text-align:left">缩写月名</td>
+</tr>
+<tr>
+<td style="text-align:left">%c</td>
+<td style="text-align:left">月，数值</td>
+</tr>
+<tr>
+<td style="text-align:left">%D</td>
+<td style="text-align:left">带有英文前缀的月中的天</td>
+</tr>
+<tr>
+<td style="text-align:left">%d</td>
+<td style="text-align:left">月的天，数值(00-31)</td>
+</tr>
+<tr>
+<td style="text-align:left">%e</td>
+<td style="text-align:left">月的天，数值(0-31)</td>
+</tr>
+<tr>
+<td style="text-align:left">%f</td>
+<td style="text-align:left">微秒</td>
+</tr>
+<tr>
+<td style="text-align:left">%H</td>
+<td style="text-align:left">小时 (00-23)</td>
+</tr>
+<tr>
+<td style="text-align:left">%h</td>
+<td style="text-align:left">小时 (01-12)</td>
+</tr>
+<tr>
+<td style="text-align:left">%I</td>
+<td style="text-align:left">小时 (01-12)</td>
+</tr>
+<tr>
+<td style="text-align:left">%i</td>
+<td style="text-align:left">分钟，数值(00-59)</td>
+</tr>
+<tr>
+<td style="text-align:left">%j</td>
+<td style="text-align:left">年的天 (001-366)</td>
+</tr>
+<tr>
+<td style="text-align:left">%k</td>
+<td style="text-align:left">小时 (0-23)</td>
+</tr>
+<tr>
+<td style="text-align:left">%l</td>
+<td style="text-align:left">小时 (1-12)</td>
+</tr>
+<tr>
+<td style="text-align:left">%M</td>
+<td style="text-align:left">月名</td>
+</tr>
+<tr>
+<td style="text-align:left">%m</td>
+<td style="text-align:left">月，数值(00-12)</td>
+</tr>
+<tr>
+<td style="text-align:left">%p</td>
+<td style="text-align:left">AM 或 PM</td>
+</tr>
+<tr>
+<td style="text-align:left">%r</td>
+<td style="text-align:left">时间，12-小时（hh:mm:ss AM 或 PM）</td>
+</tr>
+<tr>
+<td style="text-align:left">%S</td>
+<td style="text-align:left">秒(00-59)</td>
+</tr>
+<tr>
+<td style="text-align:left">%s</td>
+<td style="text-align:left">秒(00-59)</td>
+</tr>
+<tr>
+<td style="text-align:left">%T</td>
+<td style="text-align:left">时间, 24-小时 (hh:mm:ss)</td>
+</tr>
+<tr>
+<td style="text-align:left">%U</td>
+<td style="text-align:left">周 (00-53) 星期日是一周的第一天</td>
+</tr>
+<tr>
+<td style="text-align:left">%u</td>
+<td style="text-align:left">周 (00-53) 星期一是一周的第一天</td>
+</tr>
+<tr>
+<td style="text-align:left">%V</td>
+<td style="text-align:left">周 (01-53) 星期日是一周的第一天，与 %X 使用</td>
+</tr>
+<tr>
+<td style="text-align:left">%v</td>
+<td style="text-align:left">周 (01-53) 星期一是一周的第一天，与 %x 使用</td>
+</tr>
+<tr>
+<td style="text-align:left">%W</td>
+<td style="text-align:left">星期名</td>
+</tr>
+<tr>
+<td style="text-align:left">%w</td>
+<td style="text-align:left">周的天 （0=星期日, 6=星期六）</td>
+</tr>
+<tr>
+<td style="text-align:left">%X</td>
+<td style="text-align:left">年，其中的星期日是周的第一天，4 位，与 %V 使用</td>
+</tr>
+<tr>
+<td style="text-align:left">%x</td>
+<td style="text-align:left">年，其中的星期一是周的第一天，4 位，与 %v 使用</td>
+</tr>
+<tr>
+<td style="text-align:left">%Y</td>
+<td style="text-align:left">年，4 位</td>
+</tr>
+<tr>
+<td style="text-align:left">%y</td>
+<td style="text-align:left">年，2 位</td>
+</tr>
+</tbody>
+</table>
+<p>示例：</p>
 <pre class="hljs"><code><div><span class="hljs-keyword">SELECT</span> <span class="hljs-keyword">date_format</span>(<span class="hljs-keyword">CURDATE</span>(), <span class="hljs-string">'%Y-%m-%d %h:%m:%s'</span>);
 <span class="hljs-keyword">SELECT</span> <span class="hljs-keyword">date_format</span>(<span class="hljs-keyword">CURDATE</span>(), <span class="hljs-string">'%Y/%m/%d'</span>);
 <span class="hljs-keyword">SELECT</span> <span class="hljs-keyword">STR_TO_DATE</span>(<span class="hljs-string">'2016-08-08'</span>, <span class="hljs-string">'%Y-%m-%d %h:%m:%s'</span>);
@@ -801,6 +948,9 @@ Index_type 用过的索引方法（BTREE, FULLTEXT, HASH, RTREE）。</p>
 <ul>
 <li>
 <p>查看所有的库</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">SHOW</span> <span class="hljs-keyword">DATABASES</span>;
+</div></code></pre>
+<p>或者使用系统表，除库名外还能得到数据库配置信息</p>
 <pre class="hljs"><code><div><span class="hljs-keyword">SELECT</span>
     <span class="hljs-keyword">lower</span>(schema_name) schema_name
 <span class="hljs-keyword">FROM</span>
@@ -815,6 +965,20 @@ Index_type 用过的索引方法（BTREE, FULLTEXT, HASH, RTREE）。</p>
         <span class="hljs-string">'sbtest'</span>,
         <span class="hljs-string">'dev_ddl'</span>
     );
+</div></code></pre>
+</li>
+<li>
+<p>创建或删除库<br>
+创建库</p>
+<pre class="hljs"><code><div><span class="hljs-comment">-- 按照默认的字符集和排序规则创建数据库</span>
+<span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">DATABASE</span> test1;
+<span class="hljs-comment">-- 指定字符集和排序规则</span>
+<span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">DATABASE</span> test1 <span class="hljs-built_in">CHARACTER</span> <span class="hljs-keyword">SET</span> <span class="hljs-string">'utf8mb4'</span> <span class="hljs-keyword">COLLATE</span> <span class="hljs-string">'utf8mb4_unicode_ci'</span>;
+<span class="hljs-comment">-- 创建数据库时如果已存在会报错，避免报错可以先判断是否存在</span>
+CCREATE DATABASE IF NOT EXISTS test1;
+</div></code></pre>
+<p>删除库</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">DROP</span> <span class="hljs-keyword">DATABASE</span> <span class="hljs-keyword">test</span>;
 </div></code></pre>
 </li>
 <li>
