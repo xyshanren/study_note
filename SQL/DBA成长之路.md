@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-13 14:19:10
+ * @LastEditTime: 2021-02-13 20:36:53
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -248,6 +248,8 @@
   c.数据目录未给mysql用户权限；
   d.配置文件 `/etc/my.cnf` 参数错误；
 
+******
+
 - **管理员密码管理（root@localhost）**
   - 设置/修改密码
 
@@ -307,6 +309,8 @@
 - **MySQL实例的构成**
   实例：mysqld守护进程 + master thread + task thread + 预分配内存。
 
+*******
+
 - **MySQL中myslqd服务的结构**
 
   ![m2](mysql-mysqld.webp "mysqld服务的结构")
@@ -355,6 +359,8 @@
     段：一个表就是一个段，包含一个或多个区
     总结：一个表就是一个段，MySQL分配空间时至少分配一个区，每个区默认是1M（64个页），MySQL最小的IO单元是page（16K）。
 
+****************
+
 - **MySQL启动和关闭**
 - **MySQL初始化配置**
 - **MySQL多实例**
@@ -400,6 +406,92 @@
     # 查看user表
     select user,host,authentication_string from mysql.user;
     ```
+
+    删除用户
+
+    ```sql
+    drop user lee@'10.0.0.%';
+    ```
+
+    修改用户
+
+    ```sql
+    alter user lee@'10.0.0.%' identified by 'pwd';
+    ```
+
+- **权限管理**
+  - **权限的作用**
+    控制用户登陆之后能对MySQL对象做哪些命令。
+  - **权限定义**
+    mysql的权限定义就是SQL语句。
+
+    ```sql
+    ALL:
+    SELECT,INSERT, UPDATE, DELETE, CREATE, DROP, RELOAD, SHUTDOWN, PROCESS, FILE, REFERENCES, INDEX, ALTER, SHOW DATABASES, SUPER, CREATE TEMPORARY TABLES, LOCK TABLES, EXECUTE, REPLICATION SLAVE, REPLICATION CLIENT, CREATE VIEW, SHOW VIEW, CREATE ROUTINE, ALTER ROUTINE, CREATE USER, EVENT, TRIGGER, CREATE TABLESPACE
+    ALL : 以上所有权限，一般是普通管理员拥有的
+    with grant option：超级管理员才具备的，给别的用户授权的功能
+    ```
+
+    **8.0版本新特性**（了解）
+    加入了角色的概念。
+
+  - **授权**
+
+    ```sql
+    # 示例
+    grant  ALL on wordpress.* to wordpress@'10.0.0.%' identified by '123456';
+    # 解析
+    grant 权限(insert,update,...) on 范围(库) to 用户 indentified by '密码';
+
+    # 范围
+    # *.*                  ---->所有的库所有表
+    # wordpress.*          ---->库里的所有表
+    # wordpress.t1         ---->指定表
+    ```
+
+  - **查看用户权限**
+
+    ```sql
+    # 普通用户
+    mysql> show grants for lee@'%';
+    +---------------------------------+
+    | Grants for lee@%                |
+    +---------------------------------+
+    | GRANT USAGE ON *.* TO 'lee'@'%' |
+    +---------------------------------+
+    1 row in set (0.00 sec)
+    # 超级管理员
+    mysql> show grants for root@'localhost';
+    +---------------------------------------------------------------------+
+    | Grants for root@localhost                                           |
+    +---------------------------------------------------------------------+
+    | GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION |
+    | GRANT PROXY ON ''@'' TO 'root'@'localhost' WITH GRANT OPTION        |
+    +---------------------------------------------------------------------+
+    2 rows in set (0.00 sec)
+
+    # USAGE 表示空权限，只能连接数据库，不能做任何操作；
+    # ALL PRIVILEGES 表示拥有所有权限，是管理员
+    # WITH GRANT OPTION 超级管理员
+    ```
+
+  - **回收用户权限**
+    >重复（重新）授权会导致权限叠加，不会减少权限，想要减少权限只能通过回收授权；
+
+    ```sql
+    revoke delete on *.* from 'lee'@'%';
+    ```
+
+**面试题：**
+1.开发人员找DBA开用户，需要DBA和开发人员沟通什么？
+  a.你要做哪些操作（确定权限）；
+  b.你会从什么地址来连接数据库（确定ip地址或者网段）；
+  c.要对什么对象（库表）进行操作；
+
+2.开发人员找DBA要管理员的root用户密码，作为DBA你怎么处理？
+  a.一般公司，走正规流程；
+  b.金融公司严令禁止私自向DBA索要，如有私自索要按规定举报；
+  c.小公司root用户会滥用，学会保护自己，可以提意见制定流程；
 
 ### 5.基础SQL语句使用 ###
 
