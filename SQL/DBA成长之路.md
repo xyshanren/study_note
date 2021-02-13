@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-13 08:37:19
+ * @LastEditTime: 2021-02-13 14:19:10
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -115,6 +115,7 @@
     # 在虚拟机上可以添加一块新磁盘模拟数据盘
     # 查看磁盘情况
     fdisk -l
+    # 可看到新加的虚拟硬盘，一般名为：Disk /dev/sdb
     # 格式化
     mkfs.xfs /dev/sdb
     # 创建目录
@@ -150,7 +151,10 @@
 
     ```shell
     # 5.6的命令是：/application/mysql/scripts/mysql_install_db
-    /application/mysql/mysqld --initialize --user=mysql --basedir=/application/mysql --datadir=/data/mysql/data
+    # 先进入MySQL安装目录
+    cd /application/mysql/
+    # 初始化
+    mysqld --initialize --user=mysql --basedir=/application/mysql --datadir=/data/mysql/data
     # 如果初始化报错缺少 libaio 的话，需安装 libaio-devel
     yum install -y libaio-devel
     # 初始化后会生成一个临时密码，如下：
@@ -221,6 +225,10 @@
 
     # 启动
     systemctl start mysqld
+
+    # 设置开机启动
+    systemctl enable mysqld
+
     ## 判断服务是否启动
     netstat -lnp|grep mysqld
     netstat -lnp|grep 3306
@@ -245,7 +253,7 @@
 
     ```shell
     # 该命令需要输入旧密码，有则输入无则跳过
-    mysqladmin -root -p password newpassword
+    mysqladmin -uroot -p password newpassword
     ```
 
   - 找回管理员密码
