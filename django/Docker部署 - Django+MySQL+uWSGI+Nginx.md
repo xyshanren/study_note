@@ -25,6 +25,7 @@ RUN pip3 install -i https://pypi.doubanio.com/simple/ uwsgi
 
 # 环境变量
 # django项目的settings.py中的变量
+ENV SECRET_KEY xxx
 ENV MYSQL_DATABASE_NAME mysite_db
 ENV EMAIL_HOST_USER leexc_2014@foxmail.com
 # 邮箱的密码或者授权码（需要替换成自己的）

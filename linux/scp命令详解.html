@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="renderer" content="webkit" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+	<link rel="shortcut icon" href="/favicon.ico?v=1.0.8" type="image/x-icon" />
+	<link rel="pingback" href="https://man.linuxde.net/xmlrpc.php" />
+	<link media="all"
+		href="https://man.linuxde.net/wp-content/cache/autoptimize/css/autoptimize_6861751ccc76a751936754fd72cc1c6b.css"
+		rel="stylesheet" />
+	<title>scp命令_Linux scp 命令用法详解：加密的方式在本地主机和远程主机之间复制文件</title>
+	<link rel='dns-prefetch' href='//s.w.org' />
+	<link href='https://cdn.shortpixel.ai' rel='preconnect' />
+	<script
+		type="text/javascript">window._wpemojiSettings = { "baseUrl": "https:\/\/s.w.org\/images\/core\/emoji\/13.0.1\/72x72\/", "ext": ".png", "svgUrl": "https:\/\/s.w.org\/images\/core\/emoji\/13.0.1\/svg\/", "svgExt": ".svg", "source": { "concatemoji": "https:\/\/man.linuxde.net\/wp-includes\/js\/wp-emoji-release.min.js?ver=5.6" } };
+			!function (e, a, t) { var r, n, o, i, p = a.createElement("canvas"), s = p.getContext && p.getContext("2d"); function c(e, t) { var a = String.fromCharCode; s.clearRect(0, 0, p.width, p.height), s.fillText(a.apply(this, e), 0, 0); var r = p.toDataURL(); return s.clearRect(0, 0, p.width, p.height), s.fillText(a.apply(this, t), 0, 0), r === p.toDataURL() } function l(e) { if (!s || !s.fillText) return !1; switch (s.textBaseline = "top", s.font = "600 32px Arial", e) { case "flag": return !c([127987, 65039, 8205, 9895, 65039], [127987, 65039, 8203, 9895, 65039]) && (!c([55356, 56826, 55356, 56819], [55356, 56826, 8203, 55356, 56819]) && !c([55356, 57332, 56128, 56423, 56128, 56418, 56128, 56421, 56128, 56430, 56128, 56423, 56128, 56447], [55356, 57332, 8203, 56128, 56423, 8203, 56128, 56418, 8203, 56128, 56421, 8203, 56128, 56430, 8203, 56128, 56423, 8203, 56128, 56447])); case "emoji": return !c([55357, 56424, 8205, 55356, 57212], [55357, 56424, 8203, 55356, 57212]) }return !1 } function d(e) { var t = a.createElement("script"); t.src = e, t.defer = t.type = "text/javascript", a.getElementsByTagName("head")[0].appendChild(t) } for (i = Array("flag", "emoji"), t.supports = { everything: !0, everythingExceptFlag: !0 }, o = 0; o < i.length; o++)t.supports[i[o]] = l(i[o]), t.supports.everything = t.supports.everything && t.supports[i[o]], "flag" !== i[o] && (t.supports.everythingExceptFlag = t.supports.everythingExceptFlag && t.supports[i[o]]); t.supports.everythingExceptFlag = t.supports.everythingExceptFlag && !t.supports.flag, t.DOMReady = !1, t.readyCallback = function () { t.DOMReady = !0 }, t.supports.everything || (n = function () { t.readyCallback() }, a.addEventListener ? (a.addEventListener("DOMContentLoaded", n, !1), e.addEventListener("load", n, !1)) : (e.attachEvent("onload", n), a.attachEvent("onreadystatechange", function () { "complete" === a.readyState && t.readyCallback() })), (r = t.source || {}).concatemoji ? d(r.concatemoji) : r.wpemoji && r.twemoji && (d(r.twemoji), d(r.wpemoji))) }(window, document, window._wpemojiSettings);</script>
+	
+</head>
+
+<body>
+	<div id="main-single" class="main-layout clearfix">
+		<div class="right arc-wrap">
+			<div id="position-wrap" class="clearfix"></div>
+			<div id="title" class="clearfix">
+				<h1 class="left">scp命令</h1>
+				<div class="right"> <a href="https://man.linuxde.net/sub/%e6%96%87%e4%bb%b6%e4%bc%a0%e8%be%93"
+						rel="tag">文件传输</a></div>
+			</div>
+			<div id="arc-body">
+				<p> <strong>scp命令</strong>用于在Linux下进行远程拷贝文件的命令，和它类似的命令有<span class='wp_keywordlink'><a
+							href="http://man.linuxde.net/cp" title="cp命令"
+							target="_blank">cp</a></span>，不过cp只是在本机进行拷贝不能跨服务器，而且scp传输是加密的。可能会稍微影响一下速度。当你服务器硬盘变为只读<span
+						class='wp_keywordlink'><a href="http://man.linuxde.net/read" title="read命令"
+							target="_blank">read</a></span>&nbsp;only&nbsp;system时，用scp可以帮你把文件移出来。另外，scp还非常不占资源，不会提高多少系统负荷，在这一点上，<span
+						class='wp_keywordlink'><a href="http://man.linuxde.net/rsync" title="rsync命令"
+							target="_blank">rsync</a></span>就远远不及它了。虽然&nbsp;rsync比scp会快一点，但当小文件众多的情况下，rsync会导致硬盘I/O非常高，而scp基本不影响系统正常使用。
+				</p>
+				<h3> 语法<br /></h3>
+				<pre>
+scp(选项)(参数)</pre>
+				<h3> 选项<br /></h3>
+				<pre>
+-1：使用<span class='wp_keywordlink'><a href="http://man.linuxde.net/ssh" title="ssh命令" target="_blank">ssh</a></span>协议版本1；
+-2：使用ssh协议版本2；
+-4：使用ipv4；
+-6：使用ipv6；
+-B：以批处理模式运行；
+-C：使用压缩；
+-F：指定ssh配置文件；
+-l：指定宽带限制；
+-o：指定使用的ssh选项；
+-P：指定远程主机的端口号；
+-p：保留文件的最后修改时间，最后访问时间和权限模式；
+-q：不显示复制进度；
+-r：以递归方式复制。</pre>
+				<h3> 参数<br /></h3>
+				<ul>
+					<li> 源文件：指定要复制的源文件。</li>
+					<li> 目标文件：目标文件。格式为<code>user@<span class='wp_keywordlink'><a href="http://man.linuxde.net/host" title="host命令" target="_blank">host</a></span>：filename</code>（文件名为目标文件的名称）。
+					</li>
+				</ul>
+				<h3> 实例<br /></h3>
+				<p> 从远程复制到本地的scp命令与上面的命令雷同，只要将从本地复制到远程的命令后面2个参数互换顺序就行了。</p>
+				<p> <strong>从远处复制文件到本地目录</strong></p>
+				<pre>
+scp root@10.10.10.10:/opt/soft/nginx-0.5.38.<span class='wp_keywordlink'><a href="http://man.linuxde.net/tar" title="tar命令" target="_blank">tar</a></span>.gz /opt/soft/</pre>
+				<p> 从10.10.10.10机器上的<code>/opt/soft/</code>的目录中下载nginx-0.5.38.tar.gz&nbsp;文件到本地<code>/opt/soft/</code>目录中。
+				</p>
+				<p> <strong>从远处复制到本地</strong></p>
+				<pre>
+scp -r root@10.10.10.10:/opt/soft/mongodb /opt/soft/</pre>
+				<p> 从10.10.10.10机器上的<code>/opt/soft/</code>中下载mongodb目录到本地的<code>/opt/soft/</code>目录来。</p>
+				<p> <strong>上传本地文件到远程机器指定目录</strong></p>
+				<pre>
+scp /opt/soft/nginx-0.5.38.tar.gz root@10.10.10.10:/opt/soft/scptest</pre>
+				<p> 复制本地<code>/opt/soft/</code>目录下的文件nginx-0.5.38.tar.gz到远程机器10.10.10.10的<code>opt/soft/scptest</code>目录。
+				</p>
+				<p> <strong>上传本地目录到远程机器指定目录</strong></p>
+				<pre>
+scp -r /opt/soft/mongodb root@10.10.10.10:/opt/soft/scptest</pre>
+				<p> 上传本地目录<code>/opt/soft/mongodb</code>到远程机器10.10.10.10上<code>/opt/soft/scptest</code>的目录中去。</p>
+			</div>
+		</div>
+	</div>
+	<noscript>
+		<style>
+			.lazyload {
+				display: none;
+			}
+		</style>
+	</noscript>
+	<script
+		data-noptimize="1">window.lazySizesConfig = window.lazySizesConfig || {}; window.lazySizesConfig.loadMode = 1;</script>
+	<script async data-noptimize="1"
+		src='https://man.linuxde.net/wp-content/plugins/autoptimize/classes/external/js/lazysizes.min.js?ao_version=2.8.1'></script>
+
+</body>
+
+</html>

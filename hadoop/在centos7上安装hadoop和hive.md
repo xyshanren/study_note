@@ -2,6 +2,28 @@
 
 > 该文主要参考了厦门大学数据库实验室的文章：<http://dblab.xmu.edu.cn/blog/install-hadoop-in-centos/>
 
+- [在centos7上安装hadoop和hive](#在centos7上安装hadoop和hive)
+  - [环境](#环境)
+  - [准备工作](#准备工作)
+    - [创建hadoop用户](#创建hadoop用户)
+    - [安装Java环境](#安装java环境)
+    - [安装MySQL](#安装mysql)
+  - [安装Hadoop2](#安装hadoop2)
+  - [运行Hadoop伪分布式实例](#运行hadoop伪分布式实例)
+  - [启动YARN](#启动yarn)
+  - [安装和配置Hive](#安装和配置hive)
+    - [安装和配置hive源程序](#安装和配置hive源程序)
+    - [配置MySQL](#配置mysql)
+    - [启动hive](#启动hive)
+  - [问题汇总](#问题汇总)
+    - [1.启动Hadoop时，出现无法加载本地hadoop库的问题](#1启动hadoop时出现无法加载本地hadoop库的问题)
+    - [2.启动hadoop时，出现无法获取主机名的问题](#2启动hadoop时出现无法获取主机名的问题)
+    - [3.Hadoop启动时，namenode启动失败](#3hadoop启动时namenode启动失败)
+    - [4.Hadoop启动时，datanode启动失败](#4hadoop启动时datanode启动失败)
+    - [5. 启动hive时未报错，但是执行命令时报错](#5-启动hive时未报错但是执行命令时报错)
+  - [附录](#附录)
+    - [hadoop和yarn的启动关闭命令](#hadoop和yarn的启动关闭命令)
+
 ## 环境 ##
 
 - os
@@ -112,7 +134,7 @@
 
   如果配置正确的话，`$JAVA_HOME/bin/java -version` 会输出 java 的版本信息，且和 `java -version` 的输出结果一样，如下图所示：
 
-  ![image-20200613085600054](D:\work\GitRepository\study_note\hadoop\image-20200613085600054.png)
+  ![输出结果](image-20200613085600054.png)
 
 ### 安装MySQL ###
 
@@ -193,7 +215,38 @@
   >
   > 另外，本次安装的是最新的MySQL8，如果想要选择版本的话请参照最开始的参照文章进行设置；
 
-- 启动MySQL
+- 启动MySQL  
+  **启动**
+
+  ```shell
+  sudo systemctl start mysqld.service
+  # centos6
+  sudo service mysqld start
+  ```
+
+  **查看状态**
+
+  ```shell
+  sudo systemctl status mysqld.service
+  # centos6
+  sudo service mysqld status
+  ```
+
+  **停止**
+
+  ```shell
+  sudo systemctl stop mysqld.service
+  # centos6
+  sudo service mysqld stop
+  ```
+
+  **重启**
+
+  ```shell
+  sudo systemctl restart mysqld.service
+  # centos6
+  sudo service mysqld restart
+  ```
 
 - 修改密码
 
@@ -257,8 +310,6 @@
   systemctl enable mysqld
   systemctl daemon-reload
   ```
-
-  
 
 ## 安装Hadoop2 ##
 

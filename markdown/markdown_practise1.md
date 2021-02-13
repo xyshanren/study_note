@@ -25,9 +25,9 @@
 
 ### 1. 直接使用HTML标签，可以设置文字居中，字体颜色等样式(HTML语法)  
 
-    ```html
-    <div align="center" style="color:red">VS Code 使用 Markdown 编写文档</div>  
-    ```
+```html
+<div align="center" style="color:red">VS Code 使用 Markdown 编写文档</div>  
+```
 
 ### 2. 标题
 
@@ -84,19 +84,24 @@ console.log(num);
 
 ### 8. 插入图片
 
-   1. 插入本地图片
-      ![small](small.jpg '笑脸')
-      ![笑脸](small.jpg)
-   2. 插入网络图片
-      ![rollbot.png](https://i.loli.net/2019/10/18/si38LmGjAUtdF6T.png '笑脸')
+ 1. 插入本地图片
+    ![small](small.jpg '笑脸')
+    ![笑脸](small.jpg)
+ 2. 插入网络图片
+    ![rollbot.png](https://i.loli.net/2019/10/18/si38LmGjAUtdF6T.png '笑脸')
 
 ### 9. 插入视频
 
-    >Markdown 语法是不支持直接插入视频的  
-    >普遍的做法是 插入 HTML 的 iframe 框架，通过网站自带的分享功能获取，如果没有可以尝试第二种方法  
+>Markdown 语法是不支持直接插入视频的  
+>普遍的做法是 插入 HTML 的 iframe 框架，可以通过网站自带的分享功能获取  
 
-    代码：
-    <iframe height=498 width=510 src='http://player.youku.com/embed/XMjgzNzM0NTYxNg==' frameborder=0 'allowfullscreen'></iframe>
+```html
+# 代码如下
+<iframe height=498 width=510 src='http://player.youku.com/embed/XMjgzNzM0NTYxNg==' frameborder=0 'allowfullscreen'></iframe>
+```
+
+<iframe src="https://player.bilibili.com/player.html?aid=756070508&bvid=BV1Wr4y1T7K6&cid=279787964&page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+
 ### 10. 序列
 
 #### 有序序列
