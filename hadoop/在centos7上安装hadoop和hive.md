@@ -76,8 +76,6 @@
   passwd hadoop
   ```
 
-  
-
 - 使用以下命令为hadoop用户增加管理员权限
 
   ```shell
@@ -85,8 +83,6 @@
   ```
 
   找到`root ALL=(ALL) ALL`这行(应该在100行，可以使用```:98```命令直接跳转到100行)，然后在这行下面增加一行内容`hadoop ALL=(ALL) ALL`（其中的间隔符使用tab），然后保存修改；
-
-  
 
 ### 安装Java环境 ###
 
@@ -335,8 +331,6 @@
   ./bin/hadoop version
   ```
 
-  
-
 - Hadoop单机配置(非分布式)
 
   Hadoop 默认模式为非分布式模式，无需进行其他配置即可运行。非分布式即单 Java 进程，方便进行调试。
@@ -371,8 +365,6 @@
 
     保存文件后，重新运行 hadoop 实例。
 
-  
-
   作业的结果会输出在指定的 output 文件夹中，通过命令 `cat ./output/*` 查看结果，符合正则的单词 dfsadmin 出现了1次。
 
   > **注意**，Hadoop 默认不会覆盖结果文件，因此再次运行上面实例会提示出错，需要先将 `./output` 删除。
@@ -382,8 +374,6 @@
 - Hadoop伪分布式配置
 
   Hadoop 可以在单节点上以伪分布式的方式运行，Hadoop 进程以分离的 Java 进程来运行，节点既作为 NameNode 也作为 DataNode，同时，读取的是 HDFS 中的文件。
-
-  
 
   - 设置 HADOOP 环境变量
 
@@ -412,8 +402,6 @@
     ```shell
     source ~/.bashrc
     ```
-
-    
 
   - 修改Hadoop的配置
 
@@ -444,8 +432,6 @@
       </configuration>
       ```
 
-      
-
     - 修改配置文件 **hdfs-site.xml**
 
       同样修改为下面的配置：
@@ -467,8 +453,6 @@
       </configuration>
       ```
 
-      
-
     **配置完成后，需要对 NameNode 进行格式化，命令如下：**
 
     ```shell
@@ -476,8 +460,6 @@
     ```
 
     > 成功的话，会看到 “successfully formatted” 和 “Exitting with status 0” 的提示，若为 “Exitting with status 1” 则是出错。
-
-    
 
   - 开启Hadoop
 
@@ -505,8 +487,6 @@
     > systemctl stop firewalld.service    # 关闭firewall
     > systemctl disable firewalld.service # 禁止firewall开机启动
     > ```
-
-    
 
 ## 运行Hadoop伪分布式实例 ##
 
@@ -636,8 +616,6 @@ mv ./etc/hadoop/mapred-site.xml.template ./etc/hadoop/mapred-site.xml
 ./sbin/mr-jobhistory-daemon.sh stop historyserver
 ```
 
-
-
 ## 安装和配置Hive ##
 
 ### 安装和配置hive源程序 ###
@@ -721,8 +699,6 @@ vim hive-site.xml
 </configuration>
 ```
 
-
-
 ### 配置MySQL ###
 
 这里我们采用MySQL数据库保存Hive的元数据，而不是采用Hive自带的derby来存储元数据。
@@ -751,9 +727,7 @@ mysql> create database hive;    #这个hive数据库与hive-site.xml中localhost
 
 **4.配置mysql允许hive接入：**
 
-参照“准备工作”中的“安装MySQL”进行配置
-
-
+参照[安装MySQL](#安装mysql)进行配置
 
 ### 启动hive ###
 
@@ -763,8 +737,6 @@ mysql> create database hive;    #这个hive数据库与hive-site.xml中localhost
 start-dfs.sh #启动Hadoop的HDFS
 hive  #启动hive
 ```
-
-
 
 ## 问题汇总 ##
 
@@ -784,8 +756,6 @@ hive  #启动hive
 
 <https://blog.csdn.net/xichenguan/article/details/38797331>
 
-
-
 ### 2.启动hadoop时，出现无法获取主机名的问题 ###
 
 提示信息为：“INFO metrics.MetricsUtil: Unable to obtain hostName java.net.UnknowHostException”；
@@ -800,8 +770,6 @@ sudo vim /etc/hosts
 
 保存文件后，重新运行 hadoop 实例。
 
-
-
 ### 3.Hadoop启动时，namenode启动失败 ###
 
 查看日志，如果报错是获取edit log日志出错的话，就是namenode元数据破坏了，需要修复。
@@ -813,8 +781,6 @@ hadoop namenode -recover
 ```
 
 > 具体排查错误情况参考文章：<https://www.cnblogs.com/yjt1993/p/10476933.html>
-
-
 
 ### 4.Hadoop启动时，datanode启动失败 ###
 
@@ -831,11 +797,7 @@ hadoop namenode -recover
   sbin/start-dfs.sh
   ```
 
-  
-
 - 第二种:如果dfs文件中有重要的数据，那么在dfs/name目录下找到一个current/VERSION文件，记录clusterID并复制。然后dfs/data目录下找到一个current/VERSION文件，将其中clustreID的值替换成刚刚复制的clusterID的值即可；
-
-
 
 **总结**
 
@@ -851,8 +813,6 @@ sbin/stop-dfs.sh
 sbin/start-dfs.sh
 ```
 
-
-
 ### 5. 启动hive时未报错，但是执行命令时报错 ###
 
 例如执行 `show tables;` 命令时，报错“FAILED: HiveException java.lang.RuntimeException: Unable to instantiate org.apache.hadoop.hive.ql.metadata.SessionHiveMetaStoreClient”；
@@ -862,8 +822,6 @@ sbin/start-dfs.sh
 需要初始化元数据库：
 
 进入hive安装目录（比如 /usr/local/hive），执行如下命令：`./bin/schematool -dbType mysql -initSchema`；
-
-
 
 ## 附录 ##
 
@@ -880,6 +838,3 @@ stop-yarn.sh
 stop-dfs.sh
 mr-jobhistory-daemon.sh stop historyserver
 ```
-
-
-
