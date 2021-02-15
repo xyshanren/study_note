@@ -311,7 +311,7 @@
 
 > 以下操作是在hadoop用户下进行的；
 
-- 安装
+- **安装**
 
   根据“环境”中列的镜像地址选择hadoop的版本，使用wget命令进行下载，保存到指定目录（比如 ~/download）；
 
@@ -331,7 +331,7 @@
   ./bin/hadoop version
   ```
 
-- Hadoop单机配置(非分布式)
+- **Hadoop单机配置(非分布式)**
 
   Hadoop 默认模式为非分布式模式，无需进行其他配置即可运行。非分布式即单 Java 进程，方便进行调试。
 
@@ -369,9 +369,7 @@
 
   > **注意**，Hadoop 默认不会覆盖结果文件，因此再次运行上面实例会提示出错，需要先将 `./output` 删除。
 
-  
-
-- Hadoop伪分布式配置
+- **Hadoop伪分布式配置**
 
   Hadoop 可以在单节点上以伪分布式的方式运行，Hadoop 进程以分离的 Java 进程来运行，节点既作为 NameNode 也作为 DataNode，同时，读取的是 HDFS 中的文件。
 
@@ -620,114 +618,114 @@ mv ./etc/hadoop/mapred-site.xml.template ./etc/hadoop/mapred-site.xml
 
 ### 安装和配置hive源程序 ###
 
-**1.下载并解压hive源程序**
+- **1.下载并解压hive源程序**
 
-使用wget命令从“环境”目录中给出的镜像站下载源程序
+  使用wget命令从“环境”目录中给出的镜像站下载源程序
 
-```shell
-sudo tar -zxvf ./apache-hive-3.1.2-bin.tar.gz -C /usr/local   # 解压到/usr/local中
-cd /usr/local/
-sudo mv apache-hive-3.1.2-bin hive       # 将文件夹名改为hive
-sudo chown -R hadoop:hadoop hive            # 修改文件权限
-```
+  ```shell
+  sudo tar -zxvf ./apache-hive-3.1.2-bin.tar.gz -C /usr/local   # 解压到/usr/local中
+  cd /usr/local/
+  sudo mv apache-hive-3.1.2-bin hive       # 将文件夹名改为hive
+  sudo chown -R hadoop:hadoop hive            # 修改文件权限
+  ```
 
-**2.配置环境变量**
+- **2.配置环境变量**
 
-为了方便使用，我们把hive命令加入到环境变量中去，
-请使用vim编辑器打开.bashrc文件，命令如下：
+  为了方便使用，我们把hive命令加入到环境变量中去，
+  请使用vim编辑器打开.bashrc文件，命令如下：
 
-```shell
-vim ~/.bashrc
-```
+  ```shell
+  vim ~/.bashrc
+  ```
 
-在该文件最前面一行添加如下内容：
+  在该文件最前面一行添加如下内容：
 
-```shell
-export HIVE_HOME=/usr/local/hive
-export PATH=$PATH:$HIVE_HOME/bin
-```
+  ```shell
+  export HIVE_HOME=/usr/local/hive
+  export PATH=$PATH:$HIVE_HOME/bin
+  ```
 
-保存退出后，运行如下命令使配置立即生效：
+  保存退出后，运行如下命令使配置立即生效：
 
-```shell
-source ~/.bashrc
-```
+  ```shell
+  source ~/.bashrc
+  ```
 
-**3. 修改`/usr/local/hive/conf`下的hive-site.xml**
+- **3. 修改`/usr/local/hive/conf`下的hive-site.xml**
 
-执行如下命令：
+  执行如下命令：
 
-```shell
-cd /usr/local/hive/conf
-mv hive-default.xml.template hive-default.xml
-```
+  ```shell
+  cd /usr/local/hive/conf
+  mv hive-default.xml.template hive-default.xml
+  ```
 
-上面命令是将hive-default.xml.template重命名为hive-default.xml；
-然后，使用vim编辑器新建一个配置文件hive-site.xml，命令如下：
+  上面命令是将hive-default.xml.template重命名为hive-default.xml；
+  然后，使用vim编辑器新建一个配置文件hive-site.xml，命令如下：
 
-```shell
-cd /usr/local/hive/conf
-vim hive-site.xml
-```
+  ```shell
+  cd /usr/local/hive/conf
+  vim hive-site.xml
+  ```
 
-在hive-site.xml中添加如下配置信息：
+  在hive-site.xml中添加如下配置信息：
 
-```xml
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
-<configuration>
-  <property>
-    <name>javax.jdo.option.ConnectionURL</name>
-    <value>jdbc:mysql://localhost:3306/hive?createDatabaseIfNotExist=true</value>
-    <description>JDBC connect string for a JDBC metastore</description>
-  </property>
-  <property>
-    <name>javax.jdo.option.ConnectionDriverName</name>
-    <value>com.mysql.jdbc.Driver</value>
-    <description>Driver class name for a JDBC metastore</description>
-  </property>
-  <property>
-    <name>javax.jdo.option.ConnectionUserName</name>
-    <value>hive</value>
-    <description>username to use against metastore database</description>
-  </property>
-  <property>
-    <name>javax.jdo.option.ConnectionPassword</name>
-    <value>hive</value>
-    <description>password to use against metastore database</description>
-  </property>
-</configuration>
-```
+  ```xml
+  <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+  <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+  <configuration>
+    <property>
+      <name>javax.jdo.option.ConnectionURL</name>
+      <value>jdbc:mysql://localhost:3306/hive?createDatabaseIfNotExist=true</value>
+      <description>JDBC connect string for a JDBC metastore</description>
+    </property>
+    <property>
+      <name>javax.jdo.option.ConnectionDriverName</name>
+      <value>com.mysql.jdbc.Driver</value>
+      <description>Driver class name for a JDBC metastore</description>
+    </property>
+    <property>
+      <name>javax.jdo.option.ConnectionUserName</name>
+      <value>hive</value>
+      <description>username to use against metastore database</description>
+    </property>
+    <property>
+      <name>javax.jdo.option.ConnectionPassword</name>
+      <value>hive</value>
+      <description>password to use against metastore database</description>
+    </property>
+  </configuration>
+  ```
 
 ### 配置MySQL ###
 
 这里我们采用MySQL数据库保存Hive的元数据，而不是采用Hive自带的derby来存储元数据。
 
-**1.下载MySQL jdbc包**
+- **1.下载MySQL jdbc包**
 
-下载地址见“环境”目录，还是使用wget命令
+  下载地址见“环境”目录，还是使用wget命令
 
-```shell
-tar -zxvf mysql-connector-java-8.0.20.tar.gz   #解压
-cp mysql-connector-java-8.0.20/mysql-connector-java-8.0.20.jar  /usr/local/hive/lib #将mysql-connector-java-8.0.20.jar拷贝到/usr/local/hive/lib目录下
-```
+  ```shell
+  tar -zxvf mysql-connector-java-8.0.20.tar.gz   #解压
+  cp mysql-connector-java-8.0.20/mysql-connector-java-8.0.20.jar  /usr/local/hive/lib #将mysql-connector-java-8.0.20.jar拷贝到/usr/local/hive/lib目录下
+  ```
 
-**2.启动并登陆mysql shell**
+- **2.启动并登陆mysql shell**
 
-```mysql
- service mysql start #启动mysql服务
- mysql -u root -p  #登陆shell界面
-```
+  ```mysql
+  service mysql start #启动mysql服务
+  mysql -u root -p  #登陆shell界面
+  ```
 
-**3.新建hive数据库**
+- **3.新建hive数据库**
 
-```mysql
-mysql> create database hive;    #这个hive数据库与hive-site.xml中localhost:3306/hive的hive对应，用来保存hive元数据
-```
+  ```mysql
+  mysql> create database hive;    #这个hive数据库与hive-site.xml中localhost:3306/hive的hive对应，用来保存hive元数据
+  ```
 
-**4.配置mysql允许hive接入：**
+- **4.配置mysql允许hive接入：**
 
-参照[安装MySQL](#安装mysql)进行配置
+  >参照[安装MySQL](#安装mysql)进行配置
 
 ### 启动hive ###
 
@@ -744,17 +742,12 @@ hive  #启动hive
 
 提示信息为：“WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform… using builtin-java classes where applicable”；
 
-**该 WARN 提示可以忽略，不会影响 Hadoop 正常运行，如需解决请按以下方法解决**
-
-可以通过在 `~/.bashrc` 中的Hadoop环境变量中添加一行配置来解决，即 `export HADOOP_OPTS="-Djava.library.path=$HADOOP_HOME/lib/native"`；
-
-其中，可以开启Hadoop调试信息进行问题排查：`export HADOOP_ROOT_LOGGER=DEBUG,console` ，关闭使用命令：`export HADOOP_ROOT_LOGGER=INFO,console` 
-
-参考文章：
-
-<https://www.cnblogs.com/likui360/p/6558749.html>
-
-<https://blog.csdn.net/xichenguan/article/details/38797331>
+>**该 WARN 提示可以忽略，不会影响 Hadoop 正常运行，如需解决请按以下方法解决**
+>可以通过在 `~/.bashrc` 中的Hadoop环境变量中添加一行配置来解决，即 `export HADOOP_OPTS="-Djava.library.path=$HADOOP_HOME/lib/native"`；
+>其中，可以开启Hadoop调试信息进行问题排查：`export HADOOP_ROOT_LOGGER=DEBUG,console` ，关闭使用命令：`export HADOOP_ROOT_LOGGER=INFO,console` 。
+>参考文章：
+><https://www.cnblogs.com/likui360/p/6558749.html>
+><https://blog.csdn.net/xichenguan/article/details/38797331>
 
 ### 2.启动hadoop时，出现无法获取主机名的问题 ###
 
@@ -784,44 +777,44 @@ hadoop namenode -recover
 
 ### 4.Hadoop启动时，datanode启动失败 ###
 
-**原因**
+- **原因**
 
-当我们使用hadoop namenode -format格式化namenode时，会在namenode数据文件夹（这个文件夹为自己配置文件中dfs.name.dir的路径）中保存一个current/VERSION文件，记录clusterID，datanode中保存的current/VERSION文件中的clustreID的值是上一次格式化保存的clusterID，这样，datanode和namenode之间的ID不一致。
+  当我们使用hadoop namenode -format格式化namenode时，会在namenode数据文件夹（这个文件夹为自己配置文件中dfs.name.dir的路径）中保存一个current/VERSION文件，记录clusterID，datanode中保存的current/VERSION文件中的clustreID的值是上一次格式化保存的clusterID，这样，datanode和namenode之间的ID不一致。
 
-**解决方法**
+- **解决方法**
 
-- 第一种：如果dfs文件夹中没有重要的数据，那么删除dfs文件夹，再重新运行下列指令：
+  - 第一种：如果dfs文件夹中没有重要的数据，那么删除dfs文件夹，再重新运行下列指令：
+
+    ```shell
+    hadoop namenode -format
+    sbin/start-dfs.sh
+    ```
+
+  - 第二种:如果dfs文件中有重要的数据，那么在dfs/name目录下找到一个current/VERSION文件，记录clusterID并复制。然后dfs/data目录下找到一个current/VERSION文件，将其中clustreID的值替换成刚刚复制的clusterID的值即可；
+
+- **总结**
+
+  每次运行结束Hadoop后，都应该关闭Hadoop.
 
   ```shell
-  hadoop namenode -format
-  sbin/start-dfs.sh
+  sbin/stop-dfs.sh
   ```
 
-- 第二种:如果dfs文件中有重要的数据，那么在dfs/name目录下找到一个current/VERSION文件，记录clusterID并复制。然后dfs/data目录下找到一个current/VERSION文件，将其中clustreID的值替换成刚刚复制的clusterID的值即可；
+  下次想重新运行Hadoop，不用再格式化namenode,直接启动Hadoop即可
 
-**总结**
-
-每次运行结束Hadoop后，都应该关闭Hadoop.
-
-```shell
-sbin/stop-dfs.sh
-```
-
-下次想重新运行Hadoop，不用再格式化namenode,直接启动Hadoop即可
-
-```shell
-sbin/start-dfs.sh
-```
+  ```shell
+  sbin/start-dfs.sh
+  ```
 
 ### 5. 启动hive时未报错，但是执行命令时报错 ###
 
 例如执行 `show tables;` 命令时，报错“FAILED: HiveException java.lang.RuntimeException: Unable to instantiate org.apache.hadoop.hive.ql.metadata.SessionHiveMetaStoreClient”；
 
-**解决方法**
+- **解决方法**
 
-需要初始化元数据库：
+  需要初始化元数据库：
 
-进入hive安装目录（比如 /usr/local/hive），执行如下命令：`./bin/schematool -dbType mysql -initSchema`；
+  进入hive安装目录（比如 /usr/local/hive），执行如下命令：`./bin/schematool -dbType mysql -initSchema`；
 
 ## 附录 ##
 
