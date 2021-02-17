@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-13 20:36:53
+ * @LastEditTime: 2021-02-17 22:17:38
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -199,6 +199,8 @@
     cp /application/mysql/support-files/mysql.server /etc/init.d/mysqld
     ## 启动
     service mysqld start
+    # 同 /etc/init.d/mysql start
+    # 实际上是启动了 mysql.server 然后调用了 /application/mysql/bin/mysqld_safe(脚本)  然后启动了 mysqld
 
     # 以上还包括 start|stop|restart|status 等
     ```
@@ -309,8 +311,6 @@
 - **MySQL实例的构成**
   实例：mysqld守护进程 + master thread + task thread + 预分配内存。
 
-*******
-
 - **MySQL中myslqd服务的结构**
 
   ![m2](mysql-mysqld.webp "mysqld服务的结构")
@@ -357,13 +357,7 @@
     页（page）：最小的存储（IO）单元，默认16k
     区：64个（默认）连续的页，共1M
     段：一个表就是一个段，包含一个或多个区
-    总结：一个表就是一个段，MySQL分配空间时至少分配一个区，每个区默认是1M（64个页），MySQL最小的IO单元是page（16K）。
-
-****************
-
-- **MySQL启动和关闭**
-- **MySQL初始化配置**
-- **MySQL多实例**
+    总结：一个表就是一个段（分区表除外），MySQL分配空间时至少分配一个区，每个区默认是1M（64个页），MySQL最小的IO单元是page（16K）。
 
 ### 4.MySQL基础管理 ###
 
@@ -482,21 +476,351 @@
     revoke delete on *.* from 'lee'@'%';
     ```
 
-**面试题：**
-1.开发人员找DBA开用户，需要DBA和开发人员沟通什么？
-  a.你要做哪些操作（确定权限）；
-  b.你会从什么地址来连接数据库（确定ip地址或者网段）；
-  c.要对什么对象（库表）进行操作；
+    **面试题：**
+    1.开发人员找DBA开用户，需要DBA和开发人员沟通什么？
+      a.你要做哪些操作（确定权限）；
+      b.你会从什么地址来连接数据库（确定ip地址或者网段）；
+      c.要对什么对象（库表）进行操作；
 
-2.开发人员找DBA要管理员的root用户密码，作为DBA你怎么处理？
-  a.一般公司，走正规流程；
-  b.金融公司严令禁止私自向DBA索要，如有私自索要按规定举报；
-  c.小公司root用户会滥用，学会保护自己，可以提意见制定流程；
+    2.开发人员找DBA要管理员的root用户密码，作为DBA你怎么处理？
+      a.一般公司，走正规流程；
+      b.金融公司严令禁止私自向DBA索要，如有私自索要按规定举报；
+      c.小公司root用户会滥用，学会保护自己，可以提意见制定流程；
+
+- **连接管理**
+  - 自带客户端命令
+    常用的命令：
+
+    ```shell
+    -u                   用户
+    -p                   密码
+    -h                   IP
+    -P                   端口
+    -S                   socket文件
+    -e                   免交互执行命令
+    <                    导入SQL脚本
+
+    [root@db01 ~]# mysql -uroot -p -h 10.0.0.51 -P3306
+    Enter password:
+    mysql> select @@socket;
+    +-----------------+
+    | @@socket        |
+    +-----------------+
+    | /tmp/mysql.sock |
+    
+    # 管理员最常用的连接方式，一般省略 -S
+    [root@db01 ~]# mysql -uroot -p -S /tmp/mysql.sock
+    Enter password:
+    # 查看连接方式
+    mysql> show processlist;
+    +----+------+-----------+------+---------+------+----------+------------------+
+    | Id | User | Host      | db   | Command | Time | State    | Info             |
+    +----+------+-----------+------+---------+------+----------+------------------+
+    |  2 | root | localhost | NULL | Query   |    0 | starting | show processlist |
+    +----+------+-----------+------+---------+------+----------+------------------+
+    1 row in set (0.00 sec)
+    
+    # 免交互执行命令
+    [root@db01 ~]# mysql -uroot -p -e "select user,host from mysql.user;"
+    Enter password:
+    +---------------+-----------+
+    | user          | host      |
+    +---------------+-----------+
+    | abc          | 10.0.0.%  |
+    | app          | 10.0.0.%  |
+    | root          | 10.0.0.%  |
+    | mysql.session | localhost |
+    | mysql.sys    | localhost |
+    | root          | localhost |
+    +---------------+-----------+
+    
+    # 执行sql脚本
+    [root@db01 ~]# mysql -uroot -p <world.sql
+    Enter password:
+    [root@db01 ~]#
+    ```
+
+    **问题：**
+    怎么证明你的数据库是可用的？
+    1.证明进程和端口是存在的；
+
+    ```shell
+    # 查看mysqld进程
+    ps -ef | grep mysqld
+    # 查看端口
+    netstat -lnp|grep [3306|mysqld]
+    ```
+
+    2.验证用户远程可以连接，使用命令 `mysql -uxxx -p -hxxxx`
+
+  - 远程客户端工具
+    SQLyog,MySQL Workbanch,Navicat等
+
+- **启动和关闭**
+  - 辅助脚本方式（普通的启动关闭）：
+    sys-v   : /etc/init.d/mysqld
+    systemd : /etc/systemd/system/mysqld.service
+
+    >**不建议以sys-v方式启动**，其是安全模式，mysqld服务异常关闭后mysqld_safe会自动启动mysqld，但MySQL启动过程会做数据回滚，所以建议先做数据备份再启动。
+
+  - 维护性的启动方式：
+    可以定制一些参数
+    1./application/mysql/bin/mysqld_safe --skip-grant-tableds --skip-networking &
+    2./application/mysql/bin/mysqld &
+
+- **初始化配置**
+  - 预编译时进行设置（略）
+    只能在编译安装中实现，硬编码配置到程序中。
+  - 初始化配置文件(my.cnf)
+    - 初始化文件默认读取位置
+      读取顺序如下，如果这些位置都有配置文件，以最后一个为准（后面的配置覆盖前面的配置）
+
+      ```shell
+      # 使用命令查看 my.cnf 的读取顺序
+      mysqld --help --verbose | grep "my.cnf"
+      /etc/my.cnf /etc/mysql/my.cnf /usr/local/mysql/etc/my.cnf ~/.my.cnf
+      ```
+
+      也可以使用参数 `--defaults-file=/opt/my.cnf` 指定读取配置文件（使用mysqld_safe/mysqld 启动时）；
+
+  - 命令行模式（启动时用参数指定配置信息）
+  - 初始化配置文件的应用
+    - 作用
+      影响到数据库的启动：mysqld mysqld_safe
+      影响到客户端的连接：mysql mysqldump mysqladmin
+    - 书写格式
+
+      ```cnf
+      [标签]
+      配置项=xxxx
+
+      标签类型：服务端、客户端
+      服务器端标签：
+      [mysqld]
+      [mysqld_safe]
+      [server]
+
+      客户端标签：
+      [mysql]
+      [mysqldump]
+      [client]
+
+      配置文件的示例：
+      [mysqld]
+      user=mysql
+      basedir=/application/mysql
+      datadir=/data/mysql/data
+      socket=/tmp/mysql.sock
+      server_id=6
+      port=3306
+      log_error=/data/mysql/mysql.log
+      [mysql]
+      socket=/tmp/mysql.sock
+      prompt=Master [\\d]>
+      ```
+
+    - 常用配置项（通用模板）
+
+      ```cnf
+      [mysqld]
+      user=mysql
+      basedir=/application/mysql
+      datadir=/data/mysql/data
+      socket=/tmp/mysql.sock
+      # server_id 大于1 主从集群时必须设置且不同
+      server_id=6
+      port=3306
+      log_error=/data/mysql/mysql.log
+      # 二进制日志位置+文件名的前缀（mysql-bin）
+      log_bin=/data/mysql/data/mysql-bin
+      [mysql]
+      socket=/tmp/mysql.sock
+      ```
+
+- **MySQL多实例**
+  - 准备多个目录
+
+    ```shell
+    mkdir -p /data/330{7,8,9}/data
+    ```
+
+  - 准备配置文件
+
+    ```shell
+    cat > /data/3307/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql
+    datadir=/data/3307/data
+    socket=/data/3307/mysql.sock
+    log_error=/data/3307/mysql.log
+    port=3307
+    server_id=7
+    log_bin=/data/3307/mysql-bin
+    EOF
+
+    cat > /data/3308/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql
+    datadir=/data/3308/data
+    socket=/data/3308/mysql.sock
+    log_error=/data/3308/mysql.log
+    port=3308
+    server_id=8
+    log_bin=/data/3308/mysql-bin
+    EOF
+
+    cat > /data/3309/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql
+    datadir=/data/3309/data
+    socket=/data/3309/mysql.sock
+    log_error=/data/3309/mysql.log
+    port=3309
+    server_id=9
+    log_bin=/data/3309/mysql-bin
+    EOF
+    ```
+
+  - 初始化三套数据
+
+    ```shell
+    mv /etc/my.cnf /etc/my.cnf.bak
+    mysqld --initialize-insecure  --user=mysql --datadir=/data/3307/data --basedir=/app/mysql
+    mysqld --initialize-insecure  --user=mysql --datadir=/data/3308/data --basedir=/app/mysql
+    mysqld --initialize-insecure  --user=mysql --datadir=/data/3309/data --basedir=/app/mysql
+    ```
+
+  - systemd管理多实例
+
+    ```shell
+    # 定制不同的启动脚本
+    cd /etc/systemd/system
+    cp mysqld.service mysqld3307.service
+    cp mysqld.service mysqld3308.service
+    cp mysqld.service mysqld3309.service
+
+    # 分别修改配置文件
+    vim mysqld3307.service
+    ExecStart=/application/mysql/bin/mysqld  --defaults-file=/data/3307/my.cnf
+    vim mysqld3308.service
+    ExecStart=/application/mysql/bin/mysqld  --defaults-file=/data/3308/my.cnf
+    vim mysqld3309.service
+    ExecStart=/application/mysql/bin/mysqld  --defaults-file=/data/3309/my.cnf
+    ```
+
+  - 授权
+
+    ```shell
+    chown -R mysql.mysql /data/*
+    ```
+
+  - 启动
+
+    ```shell
+    systemctl start mysqld3307.service
+    systemctl start mysqld3308.service
+    systemctl start mysqld3309.service
+    ```
+
+  - 验证多实例
+
+    ```shell
+    netstat -lnp|grep 330
+    # sql语句验证
+    mysql -S /data/3307/mysql.sock -e "select @@server_id"
+    mysql -S /data/3308/mysql.sock -e "select @@server_id"
+    mysql -S /data/3309/mysql.sock -e "select @@server_id"
+    ```
 
 ### 5.基础SQL语句使用 ###
 
-结构化查询语言(Structured Query Language)，主要分为4大类：数据查询语言（DQL:Data Query Language）、数据操作语言（DML:Data Manipulation Language）、数据控制语言（DCL:Data Control Language）、数据定义语言（DDL:Data Definition Language）。
->多数时候 DQL也会归为DML。
+- 介绍
+  结构化查询语言(Structured Query Language)，主要分为4大类：
+  数据查询语言（DQL:Data Query Language）
+  数据操作语言（DML:Data Manipulation Language）
+  数据控制语言（DCL:Data Control Language）
+  数据定义语言（DDL:Data Definition Language）
+  >多数时候 DQL也会归为DML。
+
+  SQL标准：到目前为止，SQL共推出四代标准，分别是SQL-89、SQL-92、SQL-99、SQL-2003。
+  MySQL从5.7版本开始，加入了SQL_Mode 严格模式，开始遵守SQL标准。
+
+  >关于SQL标准的详细情况，参照：
+  <https://my.oschina.net/goopand/blog/393628>
+  <https://www.ripjava.com/article/1370280574320672>
+
+- 数据类型
+  控制数据的规范性，让数据具有具体含义，在离殇进行控制。
+
+  - 字符型
+    常用的：
+    char(n):定长（固定存储空间），最多为255个字符。
+    varchar(n):可变长（按需分配存储空间），最多为65535个字符，推荐最长设为255（会单独占用一个字符来记录字符串长度，超过255后需要两个字节记录字符串长度）。
+    enum('bj','tj','sh')：枚举类型，比较适合于取值范围固定的列，可以很大程度的优化索引结构（**禁存数字**，容易与索引产生错乱）。
+
+    ![string](string.webp)
+
+  - 数值型
+    常用的：
+    tinyint : 不需要知道长度；
+    int : 不需要知道长度，注意，最多存10位数字（比如不能用来存手机号）；
+    bigint : 不需要知道长度；
+
+    ![int](int.webp)
+
+  - 时间类型
+    常用的：
+    date
+    datetime : 范围为从 1000-01-01 00:00:00.000000 至 9999-12-31 23:59:59.999999。
+    timestamp : 范围为从 1970-01-01 00:00:00.000000 至 2038-01-19 03:14:07.999999 且会受到时区的影响。
+
+    ![time](time.webp)
+
+  - 二进制类型
+
+    ![binary](binary.webp)
+
+  **面试题：**
+  1.char he varchar的区别？
+    1) 255    65535
+    2) 定长   变长 （由于需要计算字符串长度，在同样长度字符串插入的情况下varchar稍有劣势）
+
+  2.char 和 varchar 如何选择？
+    1) char类型：固定长度的字符串列，比如手机号、身份证号、银行卡号等；
+    2) varchar: 不确定长度的字符串；
+    3) abc
+
+  3.为什么不尽量使用char？会影响到索引的高度？
+
+- 表属性
+  - 存储引擎（engine）
+    MyISAM(5.7以前常用),InnoDB
+  - 字符集和字符序(charset/character set,collation)
+    字符集最好使用 utf8mb4(真正的Unicode编码)
+    字符序也叫排序规则或者校对规则，主要针对英文字符大小写问题。
+
+- 列属性和约束
+  常用的：
+  **主键** primary key (PK) 唯一非空，尽量是数字列、整数列、无关列、自增的。聚集索引？是一种约束，也是一种索引类型，在一个表中只能有一个主键（可以由多个列构成）。
+  **自增** auto_increment 针对数字列自动生成顺序值（可设置增长间隔），往往与主键成对出现。
+  **非空** not null 必填项（建议，对于普通列尽量设置为非空，利于索引应用）。
+  **默认值** default 数字列使用0，字符串使用nul/null，往往与非空配合使用。
+  **唯一** unique 不能重复。
+  **无符号** unsigned 针对数字列（必须为正数）
+  **注释** comment
+
+- SQL语句应用
+  - DDL
+    - 库：建、改、删（生成中禁止删操作）
+    - 表：建、改、删
+    - 建库表规范
+      1.库名表名使用小写字母；（开发中中环境混乱，与生成平台不同，容易混用大小写导致问题）
+      2.不能以数字和下划线开头；
+      3.不能使用保留字；
+      4.与业务相关；
+
+>以上，不熟悉的可以查看官方文档，例如 `help create database`
+>详情见MySQL/使用笔记.md
 
 ### 6.SQL高级应用 ###
 
@@ -535,6 +859,3 @@
 ### 1.Oracle ###
 
 ### 2.postgresql ###
-
-
-
