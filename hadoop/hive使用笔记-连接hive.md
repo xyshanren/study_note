@@ -2,11 +2,18 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-15 09:38:47
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-15 12:01:24
+ * @LastEditTime: 2021-02-17 10:07:09
  * @Descriptiong: 
 -->
 
 # hive的连接方式 #
+
+- [hive的连接方式](#hive的连接方式)
+  - [CLI连接](#cli连接)
+  - [HiveServer2/beeline](#hiveserver2beeline)
+    - [修改hadoop和hive的配置文件](#修改hadoop和hive的配置文件)
+    - [连接](#连接)
+    - [beeline支持的操作](#beeline支持的操作)
 
 ## CLI连接 ##
 
