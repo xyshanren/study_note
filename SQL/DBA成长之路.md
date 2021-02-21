@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-18 22:19:55
+ * @LastEditTime: 2021-02-21 22:01:22
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -20,17 +20,18 @@
     - [5.基础SQL语句使用](#5基础sql语句使用)
     - [6.SQL高级应用](#6sql高级应用)
     - [7.Information_schema获取元数据](#7information_schema获取元数据)
-    - [8.索引、执行计划管理（基础优化）](#8索引执行计划管理基础优化)
-    - [9.存储引擎](#9存储引擎)
-    - [10.日志管理](#10日志管理)
-    - [11.备份与恢复](#11备份与恢复)
-    - [12.主从复制及架构演变](#12主从复制及架构演变)
-    - [13.传统的高可用及读写分离（MHA&Atlas）](#13传统的高可用及读写分离mhaatlas)
-    - [14.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#14传统分布式架构设计与实现-扩展mycat--dbledrds)
-    - [15.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster）](#15mysql-57-高可用及分布式架构-扩展mgrinnodb-cluster)
-    - [16.MySQL优化（安全，性能）](#16mysql优化安全性能)
-    - [17.MySQL监控（zabbix,open-falcon）](#17mysql监控zabbixopen-falcon)
-    - [18.RDS（阿里云）](#18rds阿里云)
+    - [8.索引](#8索引)
+    - [9.执行计划管理（基础优化）](#9执行计划管理基础优化)
+    - [10.存储引擎](#10存储引擎)
+    - [11.日志管理](#11日志管理)
+    - [12.备份与恢复](#12备份与恢复)
+    - [13.主从复制及架构演变](#13主从复制及架构演变)
+    - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
+    - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
+    - [16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster）](#16mysql-57-高可用及分布式架构-扩展mgrinnodb-cluster)
+    - [17.MySQL优化（安全，性能）](#17mysql优化安全性能)
+    - [18.MySQL监控（zabbix,open-falcon）](#18mysql监控zabbixopen-falcon)
+    - [19.RDS（阿里云）](#19rds阿里云)
   - [还需要学习的Nosql](#还需要学习的nosql)
     - [1.Redis](#1redis)
     - [2.MongoDB](#2mongodb)
@@ -845,27 +846,353 @@
 
 ### 7.Information_schema获取元数据 ###
 
-### 8.索引、执行计划管理（基础优化） ###
+元数据储存在基表（无法直接查询和修改）中
+-> 使用 DDL 进行元数据修改
+-> 使用 show,desc,information_schema(全局的统计和查询) 查看元数据。
 
-### 9.存储引擎 ###
+>详细用法见 `MySQL/使用笔记.md`
 
-### 10.日志管理 ###
+### 8.索引 ###
 
-### 11.备份与恢复 ###
+- 测试环境准备
+  先准备数据，命令如下：
 
-### 12.主从复制及架构演变 ###
+  ```sql
+  -- 进入测试用的库
+  use test;
+  -- 创建测试表
+  create table t100w(
+  id int,
+  num int,
+  k1 char(2),
+  k2 char(4),
+  dt timestamp
+  ) charset utf8mb4 collate utf8mb4_bin;
 
-### 13.传统的高可用及读写分离（MHA&Atlas） ###
+  -- 创建存储过程
+  delimiter //
+  create procedure rand_data(in num int)
+  begin
+  declare str char(62) default 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  declare str2 char(2);
+  declare str4 char(4);
+  declare i int default 0;
+  while i < num do
+  set str2=concat(substring(str,1+floor(rand()*61),1),substring(str,1+floor(rand()*61),1));
+  set str4=concat(substring(str,1+floor(rand()*61),2),substring(str,1+floor(rand()*61),2));
+  set i=i+1;
+  insert into t100w values (i,floor(rand()*num),str2,str4,now());
+  end while;
+  end;
+  //
+  delimiter ;
 
-### 14.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS） ###
+  -- 调用存储过程，插入100w数据
+  call rand_data(1000000);
+  ```
 
-### 15.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster） ###
+  使用MySQL自带的工具进行压力测试（模仿100个连接一共做1000次查询），命令如下：
 
-### 16.MySQL优化（安全，性能） ###
+  ```shell
+  mysqlslap --defaults-file=/etc/my.cnf \
+  --concurrency=100 --iterations=1 --create-schema='test' \
+  --query="select * from test.t100w where k2='HIGH'" engine=innodb \
+  --number-of-queries=2000 -uroot -p123 -verbose
+  # 测试结果
+  Benchmark
+          Running for engine rbose
+          Average number of seconds to run all queries: 5064.970 seconds
+          Minimum number of seconds to run all queries: 5064.970 seconds
+          Maximum number of seconds to run all queries: 5064.970 seconds
+          Number of clients running queries: 100
+          Average number of queries per client: 20
+  ```
 
-### 17.MySQL监控（zabbix,open-falcon） ###
+- 索引的作用
+  提供了类似于书中目录的作用,目的是为了优化查询。
 
-### 18.RDS（阿里云） ###
+- 索引的种类（算法）
+  B+树
+  Hash
+  R树
+  Full text
+  GIS
+
+- B+树
+
+  ![B+树](B+Tree.webp)
+
+  B-Tree 普通B树
+  B+Tree MySQL使用的
+  B*Tree MySQL在B+树上进一步优化
+
+  >B+Tree 在叶子节点上增加了双向指针，在范围查询方面提供了更好的性能(> < >= <= like)。
+  >MySQL在B+树上又进行了优化，主要是在枝节点上增加了双向指针。
+
+- 在功能上的分类
+  - 辅助索引（S）
+    1.辅助索引是基于表的列进行生成的；
+    2.取出所有键值（索引列的所有值）；
+    3.进行所有键值的排序；
+    4.将所有键值按顺序落到B+Tree索引的叶子节点上；
+    5.进而生成枝节点和根节点；
+    6.叶子节点除了存储键值外，还存储了相邻叶子节点的指针，另外还会保存原表数据的指针；
+
+  - 聚集索引（C）
+    前提：
+    1.建表时有主键列（比如ID列）；
+    2.表数据进行存储时，会按照ID列的顺序，有序的存储每行数据到数据页上（聚集索引组织表）；
+    3.表的数据页被作为聚集索引的叶子节点；
+    4.上层节点和根节点只需要利用叶子节点的主键值来生成；
+
+  - 聚集索引和辅助索引构成的区别
+    1.聚集索引只能有一个（可以由多列构成，但代价比较高）,非空唯一,一般是主键，如果没有主键会选唯一键，如果都没有则会生成一个隐藏例作为主键；
+      辅助索引,可以有多个,是配合聚集索引使用的；
+    2.聚集索引叶子节点,就是磁盘的数据行存储的数据页（MySQL是根据聚集索引组织存储数据,数据存储时就是按照聚集索引的顺序进行存储，所以推荐使用自增ID做主键）；
+      辅助索引,只会提取索引键值,进行自动排序生成B树结构；
+
+- 辅助索引细分
+  - 单列辅助索引
+  - 联合多列辅助索引（联合索引，可能实现覆盖）
+  - 唯一索引
+- 索引树的高度受什么影响？
+  1.数据行多 —— 分表（分区，分库）
+  2.索引列值教长 —— 前缀索引
+  3.在数据行很多的情况下char类型数据列可能会比varchar类型索引树高 —— 表设计需要更合理
+  4.基于enum类型数据列的特点（实际存储时只需要存数字），可能大大优化索引高度 —— 优先使用
+
+- 索引的管理操作
+  增、删、查
+
+  >详细命令见 `MySQL/使用笔记.md`
+
+### 9.执行计划管理（基础优化） ###
+
+- **作用**
+  1.上线新的查询语句之前，预估语句的性能；
+  2.在出现性能问题时，找到合理的解决思路；
+
+- **执行计划获取**
+  使用 desc 或 explain 命令获取查询语句的简化执行计划。
+  执行计划中关键词解析：
+  table         —— 执行计划针对的表
+  type          —— 索引的应用级别
+  possible_keys —— 可能会使用到的suoyin
+  key           —— 实际上使用的索引
+  key_len       —— 联合索引覆盖长度（数值越大越好）
+  rows          —— 查询的行数（越少越好）
+  Extra         —— 额外的信息
+
+- **执行计划分析**
+  - 索引的应用级别（type）
+    有哪些级别：
+    1.all —— 全表扫描，代价最大。
+      原因：没建索引；
+            建了索引但未使用，比如（辅助索引）：全表查询（没有条件），使用 like '%%' in not in <> 等逻辑运算和对索引列进行函数运算等；
+    2.index —— 全索引扫描，代价也很大。
+    3.range —— 索引范围扫描。
+      哪些运算会带来这个结果：
+      1)辅助索引时 > >= < <= like in or 等；
+      2)主键时 还有 !=/<> 运算；
+      注意：查询语句优化到这个级别才算及格，另外要尽量避免使用 in or 等运算，前面的大于小于like等可以享受到B+树上有针对性（双向指针）的优化；
+      优化建议：in和or运算可改写成 union all 。
+    4.ref —— 辅助索引等值查询。
+    5.eq_ref  —— 在多表连接查询时，on的条件列是唯一索引或主键。
+    6.const/system —— 主键或者唯一键等值查询。
+- **Extra 额外信息**
+  using filesort —— 使用了文件排序。
+  原因：例如在既有where条件也有排序的时候，排序没有用到索引。
+  解决：安装执行顺序设计联合索引。
+- **key_len**
+  **key_len的计算**：
+  1.对于字符串
+  | 编码 | 字符所占字节数 | key_len(有非空约束的)  | key_len(可为空的列) |
+  |:--:|:--:|:--:|:--:|
+  | latin1 | 1 | `char(10)*1=10` | `char(10)*1=10+1` |
+  | utf8 | 3 | `char(10)*3=30` | `char(10)*3=30+1` |
+  | gbk | 2 | `char(10)*2=20` | `char(10)*2=20+1` |
+  | utf8mb4 | 4 | `char(10)*4=40` | `char(10)*4=40+1` |
+  > `char(10)*1` 为 列类型的字符长度*编码的字节数。
+  
+  2.对于整数
+    tinyint 分别是 1和1+1
+    int 分别是 4和4+1
+  **key_len的值是大好还是小好**
+  维度一：从索引列的列值长度来看的话，越小越好，比如列类型为varchar(255)，此时会希望使用前缀索引只为前几个字符建索引；
+  维度二：从联合索引覆盖长度来看，越大越好；
+- **面试题：explain(desc)使用场景。**
+  题目解释：公司业务很慢，请你从数据库的角度分析原因。
+  1.MySQL出现性能问题，有以下两种情况：
+    a.应激性的慢：突然夯住了，卡了，资源耗尽；
+      处理过程：
+      1)使用 `show processlist` 命令，查看数据库正在运行的命令，观察判断导致数据库卡顿的语句；
+      2)一般是开销比较大的查询，这时需要使用关键词 `explain` 查看语句的执行计划，分析原因；
+      3)索引的问题建索引或者改索引，语句语法有问题改语法，语句逻辑有问题改逻辑；
+    b.持续性的慢；
+      处理过程：
+      1)记录慢日志slowlog，分析slowlog，找到开销大的语句；
+      2)使用关键词 `explain` 查看语句的执行计划，分析原因；
+      3)索引的问题建索引或者改索引，语句语法有问题改语法，语句逻辑有问题改逻辑；
+
+- **索引应用规范**
+  分析业务：
+  1.产品的功能；
+  2.用户的行为；
+  对于“热”查询语句 -> 通过slowlog锁定需要优化的语句；
+  “热”数据
+
+  - 建立索引的原则（给DBA的建议）
+    为了使索引的使用效率更高，在创建索引时，必须考虑在哪些字段上创建索引和创建什么类型的索引。
+    由此引出索引的设计原则是：
+    1.建表时一定要有主键，如果没有可创建无关列，最好是自增ID列；
+    2.优先选择唯一值多的列作为索引；
+      如果非得使用重复值较多的列作为查询条件（例如男女），优化方案：
+      1)可以将表逻辑拆分；
+      2)可以将此列和其他查询较多的列做联合索引（联合后数据唯一）；
+    3.为经常需要在 where/order by/group by/join on 等操作中使用的字段建立索引来优化查询。
+      例如：语句 where A group by B order by C 如何建索引？
+      答：按 (A,B,C)的顺序建联合索引，且A尽量使用等值查询（否则分组和排序不会走索引）。
+    4.尽量使用前缀索引，如果索引字段的值很长，最好使用值的前缀来索引。
+    5.要限制索引的数量。
+      索引并不是越多越好，过多的索引会产生的问题：
+      1)每个索引都需要占用磁盘空间，索引越多占用的磁盘空间越大；
+      2)增、删、改数据时，都会对索引进行重构或者更新，索引过多会使更新表变得很浪费时间；
+      3)优化器的负担会很重，有可能会影响到优化器的选择；
+    6.删除不在使用或者很少使用的索引；
+      表中的数据被大量更新或数据的使用方式改变后，原有的一些索引可能不再需要，DBA应定期找出这些索引，将其删除，从而减少索引对更新操作的影响。
+      使用 **`percona-toolkit`** 工具，分析索引是否有用（pt-duplicate-key-checker 等）。
+    7.小表（比如10w行以内）不建议建索引；
+    8.索引维护（包括新增）要避开业务繁忙期；
+    9.尽量不在经常进行更新操作的列上建索引；
+
+  - 关于联合索引
+    1.类似语句 `where A group by B order by C` 时，索引顺序按 (A,B,C) 来建；
+    2.类似语句 `where A B C` 时；
+      a.都是等值的话，在5.5以后无关索引顺序，注意一个原则，唯一值多的列放在联合索引的最左侧;
+      b.如果有非等值的查询，例如 `where A= and B> and C=` 时，索引顺序为 ACB(AC也需要看谁唯一值多)，语句改写为 ACB ；
+      注意：遇到非等值查询时就无法走索引了；
+
+- **不走索引的情况（开发规范）**
+  - 没有查询条件或者查询条件没有建索引。
+    比如：`select * from tab;` 或 `select * from tab where 1=1;` 语句；
+    在业务数据库中，特别是数据量比较大的表，是没有全表扫描这种需求的，不利于用户查看数据对服务器压力也很大；
+    **解决**：
+    1.改成使用 `limit` 命令限制输出（5.7之后优化器会做同义词转换，把limit转换成 ID<某值）；
+    2.改成使用等值查询，并对使用列建索引；
+  - 查询的结果集是原表中的大部分数据（25%以上）。
+    查询的结果集超过总行数的25%，优化器就会自动转换为全表扫描；
+    **解决**：
+    1.分析业务，有没有更好的查询方式；
+    2.如果必须查询这么多数据的话，尽量不要使用MySQL查询，比如可以放大Redis中；
+  - 索引本身失效，统计数据不真实。
+    索引自我维护能力较差，当表数据变化比较频繁的时候，有可能会出现索引失效；
+    **解决**：一般做法是删除重建；
+  - 查询条件中对索引列使用函数或进行运算（包括 `+-*/!` 等）。
+  - 隐式转换。
+    比如 where条件中列类型是字符串却在等值条件中给一个数字（相当于需要先用函数将数字转换成字符串）；
+  - 对于辅助索引，<> 和 not in 会导致不走索引；
+  - like 模糊查询，适用最左原则（左边%不走索引）。
+    对于模糊匹配的需求，可以使用更擅长的数据库，比如ES或者MongoDB 。
+  >注意：单独的 `>,<,in` 这些范围查询，可能走索引也可能不走，和结果集有关，尽量结合业务添加limit分页；
+  >对于 `in,or` 可以改下成 union ；
+
+  - **面试题**
+    现象：有一条select语句，平常查询很快，突然有一天很慢，你认为会是什么原因？
+    如果是select语句的话，是索引失效，统计数据不真实；
+    如果是DML语句，是锁冲突；
+
+### 10.存储引擎 ###
+
+- **InnoDB引擎介绍**
+  类似于Linux系统中的文件系统。
+  存储引擎是作用在表上的，所以不同的表可以使用不同的存储引擎。
+- **功能**
+  数据读写
+  数据安全和一致性
+  提高性能
+  热备份
+  自动故障恢复
+  高可用方面的支持
+  ![innodb](innodb.webp)
+
+- **引擎种类**
+  **Oracle的MySQL**：
+  innodb
+  myisam
+  csv
+  memory
+  archive
+  **其他MySQL的存储引擎**：
+  PerconaDB:默认是XtraDB
+  MariaDB:默认是InnoDB
+  **支持的其他存储引擎**：
+  TokuDB
+  RocksDB
+  MyRocks
+  以上三种存储引擎的共同点：压缩比较高，数据插入性能极高。
+  这些是很多NewSQL产品使用比较多的功能特性。
+
+- **InnoDB存储引擎的核心特性**
+  1、事务（Transaction）
+  2、MVCC（Multi-Version Concurrency Control多版本并发控制）
+  3、行级锁(Row-level Lock)
+  4、ACSR（Auto Crash Safey Recovery）自动的故障安全恢复
+  5、支持热备份(Hot Backup)
+  6、Replication（复制）: Group Commit , GTID (Global Transaction ID) ,多线程 MTS(Multi-Threads-SQL)
+  7、外键（生产中一般不用）
+
+- **存储引擎相关操作**
+  - 查询
+
+    ```sql
+    -- 查看所有支持的存储引擎
+    show engines;
+    -- 查看默认的引擎
+    show variables like 'default_storage_engine';
+    -- 查看默认的引擎
+    select @@default_storage_engine;
+    ```
+
+  - 默认存储引擎设置（生产环境谨慎操作）
+    会话级别：`set default_storage_engine=myisam;`
+    全局级别（仅影响新会话）：`set global default_storage_engine=myisam;`
+    以上重启之后参数配置会失效；
+    如要永久生效，需要写入配置文件 `/etc/my.cnf` 中，参数如下：
+
+    ```cnf
+    [mysqld]
+    default_storage_engine=myisam
+    ```
+
+    >在线修改MySQL参数：
+    >会话级别：只影响当前会话（窗口），命令为 `set [session] 参数=param;`
+    >全局级别：只影响新会话，不影响当前和历史会话，命令为 `set global 参数=param;`
+    >*以上两种方法在重启之后会失效，除非参数添加到 my.cnf*
+
+  - 修改表的存储引擎
+    使用命令 `alter table tbl_name engine innodb;`
+    >此命令经常被用来进行innodb表的碎片整理。
+
+    生产需求：将某库下的所有表（很多）的存储引擎从myisam替换为innodb
+    做法：使用 concat 函数拼接处修改存储引擎的语句；
+
+### 11.日志管理 ###
+
+### 12.备份与恢复 ###
+
+### 13.主从复制及架构演变 ###
+
+### 14.传统的高可用及读写分离（MHA&Atlas） ###
+
+### 15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS） ###
+
+### 16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster） ###
+
+### 17.MySQL优化（安全，性能） ###
+
+### 18.MySQL监控（zabbix,open-falcon） ###
+
+### 19.RDS（阿里云） ###
 
 ## 还需要学习的Nosql ##
 
