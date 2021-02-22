@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-21 22:01:22
+ * @LastEditTime: 2021-02-22 18:07:21
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -1175,6 +1175,255 @@
 
     生产需求：将某库下的所有表（很多）的存储引擎从myisam替换为innodb
     做法：使用 concat 函数拼接处修改存储引擎的语句；
+
+  - 拓展：如何批量修改表的存储引擎
+    需求：将zabbix库中的所有表的引擎修改为tokudb
+    方法：使用 information_schema的tables表来拼接所有表的修改语句，语句如下：
+
+    ```sql
+    select concat('alter table zabbix.',table_name,'engine tokudb;')
+    from information_schema.tables
+    where table_schema = 'zabbix'
+    into outfile '/tmp/tokudb.sql';
+    ```
+
+- **InnoDB存储引擎物理存储结构**
+  例如，MySQL的数据存储目录 `/data/mysql/data`
+  ibdata1 : 系统数据字典信息(统计信息)，UNDO(回滚)表空间等数据
+  ib_logfile0 ~ ib_logfile1: REDO(重做)日志文件，事务日志文件。
+  ibtmp1：临时表空间磁盘位置，存储临时表。比如 group by/join/union/存储过程等时会用到临时表。
+  ib_buffer_pool : 热数据缓存（5.7新特性，在关机时MySQL会将以往比较常用到的数据缓存到这里，开机后优先加载）。*了解*
+  frm：存储表的列信息。
+  ibd：存储表的数据行和索引。
+
+  - 表空间（Tablespace）
+    1.共享表空间
+      需要将所有数据存储到同一个表空间中，管理比较混乱。
+      历史：
+      5.5版本出现的管理模式，也是默认的管理模式；（包括 数据字典，undo，临时表，索引，表数据）
+      5.6版本以，共享表空间保留，只用来存储:数据字典信息,undo,临时表。
+      5.7 版本,临时表被独立出来了。
+      8.0版本,undo也被独立出去了。
+      具体变化参照官方文档：
+      <https://dev.mysql.com/doc/refman/5.6/en/innodb-architecture.html>
+      <https://dev.mysql.com/doc/refman/5.7/en/innodb-architecture.html>
+      <https://dev.mysql.com/doc/refman/8.0/en/innodb-architecture.html>
+
+    2.共享表空间设置
+
+      ```sql
+      -- 查看共享表空间设置（1 为独立表空间，0 为共享表空间-即使用ibdata文件）
+      select @@innodb_file_per_table;
+
+      -- 查看共享表空间配置
+      select @@innodb_data_file_path;
+      show variables like '%extend%';
+
+      -- 共享表空间设置(在搭建MySQL时，初始化数据之前设置到参数文件my.cnf中)
+      -- 设置两个文件，大小为512，自动增长
+      innodb_data_file_path=ibdata1:512M:ibdata2:512M:autoextend
+      -- 增量大小，单位为M
+      innodb_autoextend_increment=64
+      ```
+
+    3.独立表空间
+      从5.6，默认表空间不再使用共享表空间，替换为独立表空间，主要存储的是用户数据。
+      存储特点为：
+        a.一个表一个ibd文件，存储数据行和索引信息；
+        b.基本表结构元数据（列信息）存储在 xxx.frm 文件；
+      **mysql表数据**:
+      |  | 元数据 | 数据行+索引 |
+      |:-:|:-:|:-:|
+      | 存储文件 | ibdataX+frm |ibd(段、区、页)
+      | 操作 | DDL | DML+DQL |
+
+      MySQL的存储引擎日志：
+      Redo Log: ib_logfile0  ib_logfile1，重做日志
+      Undo Log: ibdata1 ibdata2(存储在共享表空间中)，回滚日志
+      临时表: ibtmp1，在做join union 等操作产生的临时数据，用完就自动删除。
+
+    4.独立表空间设置
+
+      ```sql
+      -- 查看独立表空间设置
+      select @@innodb_file_per_table;
+      -- 删除表空间
+      alter table tbl_name dicard tablespace;
+      -- 导入表空间
+      alter table tbl_name import tablespace;
+      ```
+
+    5.应用案例
+      硬件及软件环境:
+      磁盘500G 没有raid
+      centos 6.8
+      mysql 5.6.33  innodb引擎  独立表空间
+      备份没有，日志也没开
+
+      开发用户专用库:
+      jira(bug追踪) 、 confluence(内部知识库)    ------> LNMT
+
+      故障描述：
+      断电了，启动完成后“/” 只读
+      fsck修复系统（提前克隆了磁盘） 重启,系统成功启动,mysql启动不了。
+      结果：confulence库在  ， jira库不见了。
+
+      处理方法：
+      confulence库中一共有107张表。
+      1.创建107和和原来一模一样的表。
+        有2016年的历史库，使用 `mysqldump` 备份confulence库的表结构；
+        使用命令 `mysqldump -uroot -ppassw0rd -B  confulence --no-data >test.sql`
+        拿到测试库，进行恢复。
+        到这步为止，表结构有了。
+      2.表空间删除。
+        使用concat函数拼接 discard 语句:
+        `select concat('alter table ',table_schema,'.'table_name,' discard tablespace;') from information_schema.tables where table_schema='confluence' into outfile '/tmp/discad.sql';`
+        在MySQL中执行 `source /tmp/discard.sql` 命令执行SQL脚本；
+        执行过程中发现，有20-30个表无法成功，主外键关系；
+        使用 `set foreign_key_checks=0` 命令跳过外键检查。
+      3.拷贝生产中confulence库下的所有表的ibd文件拷贝到准备好的环境中。
+        语句：
+        `select concat('alter table ',table_schema,'.'table_name,' import tablespace;') from information_schema.tables where table_schema='confluence' into outfile '/tmp/discad.sql';`
+      4.验证数据。
+        表都可以访问了，数据挽回到了出现问题时刻的状态。
+
+- **InnoDB事务的ACID特性**
+  影响了DML语句(insert update delete 和 一部分 select)操作的完整性一致性等。
+  **Atomic（原子性）**
+  所有语句作为一个单元全部成功执行或全部取消。不能出现中间状态。
+  **Consistent（一致性）**
+  如果数据库在事务开始时处于一致状态，则在执行该事务期间将保留一致状态。
+  **Isolated（隔离性）**
+  事务之间不相互影响。
+  **Durable（持久性）**
+  事务成功完成后，所做的所有更改都会准确地记录在数据库中，所做的更改不会丢失。
+  >官方文档: <https://dev.mysql.com/doc/refman/5.7/en/glossary.html>
+
+- **事务的生命周期（事务控制语句）**
+  - 事务的开始
+    命令 `begin;`
+    说明: 在5.5 以上的版本，不需要手工begin，只要你执行的是一个DML，会自动在前面加一个begin命令。
+  - 事务的结束
+    命令 `commit;` ， 提交事务
+    完成一个事务，一旦事务提交成功 ，就说明具备ACID特性了。
+    命令 `rollback;` ，回滚事务
+    将内存中，已执行过的操作，回滚回去。
+  - 自动提交策略（autocommit）
+
+    ```sql
+    -- 查看自动提交配置(1 表示开启 0 表示关闭)
+    select @@autocommit;
+
+    -- 在线修改
+    -- 关闭自动提交配置
+    -- 会话级别
+    set autocommit=0;
+    -- 全局级别
+    set global autocommit=0;
+
+    -- 在初始化配置中修改
+    -- 在配置文件 /etc/my.cnf 中加入 autocommit=0
+    ```
+
+    >**注意**：
+    >自动提交是否打开，一般在有事务需求的MySQL中，将其关闭；
+    >不管有没有事务需求，一般也都建议设置为0，可以很大程度上提高数据库性能；
+    >另外，当自动提交配置关闭后，可以不使用 begin 开始，但必须使用 commit 提交事务；
+
+  - 事务的隐式控制
+    用于隐式提交的 SQL 语句：
+
+    ```sql
+    -- 第二个 begin会将第一个事务提交
+    begin 
+    a
+    b
+    begin
+
+    -- set 命令会将上一个未完成的事务提交
+    SET xxxx
+
+    -- 导致提交的非事务语句：
+    -- DDL语句： （ALTER、CREATE 和 DROP）
+    -- DCL语句： （GRANT、REVOKE 和 SET PASSWORD）
+    -- 锁定语句：（LOCK TABLES 和 UNLOCK TABLES）
+    
+    -- 导致隐式提交的语句示例：
+    TRUNCATE TABLE;
+    LOAD DATA INFILE xxx;
+    SELECT FOR UPDATE xxx;
+    ```
+
+    >以上都是指同一个会话中未完成的事务；
+
+  - 事务使用示例
+
+    ```sql
+    -- 1、检查autocommit是否为关闭状态
+    select @@autocommit;
+    -- 或者：
+    show variables like 'autocommit';
+
+    -- 2、开启事务,并结束事务
+    begin
+    delete from student where name='alexsb';
+    update student set name='alexsb' where name='alex';
+    rollback;
+
+    begin
+    delete from student where name='alexsb';
+    update student set name='alexsb' where name='alex';
+    commit;
+    ```
+
+- **InnoDB 事务的ACID如何保证?**
+  - 概念
+    redo log ---> 重做日志 ib_logfile0~1   默认50M,轮询使用。
+    redo log buffer ---> redo内存区域（专门加载redo）。
+    ibd     ----> 存储 数据行和索引。
+    buffer pool --->  缓冲区池,数据和索引的缓冲。
+    LSN : 日志序列号
+          在这些区域中都有LSN，磁盘数据页,redo文件,buffer pool,redo buffer 。
+          MySQL 每次数据库启动,都会比较磁盘数据页和redolog的LSN,必须要求两者LSN一致数据库才能正常启动。
+    WAL : write ahead log 日志优先写的方式实现持久化
+    脏页: 内存脏页,内存中发生了修改,没写入到磁盘之前,我们把内存页称之为脏页。
+    CKPT: Checkpoint,检查点,就是将脏页刷写到磁盘的动作。
+    TXID: 事务号,InnoDB会为每一个事务生成一个事务号,伴随着整个事务。
+
+    ![事务](shiw.png)
+
+  - redo log
+    redo,顾名思义“重做日志”，是事务日志的一种。
+    **作用**：
+      在事务ACID过程中，实现的是“D”持久化的作用。对于AC也有相应的作用。
+    **日志位置**：
+      redo的日志文件, iblogfile0 iblogfile1... 。
+    **redo buffer**:
+      redo的buffer:数据页的变化信息+数据页当时的LSN号。
+    **redo的刷新策略**：
+      commit;
+      刷新当前事务的redo buffer到磁盘；
+      还会顺便将一部分redo buffer中没有提交的事务日志也刷新到磁盘，会区分已提交和为提交。
+    **MySQL CSR——前滚**
+      MySQL : 在启动时,必须保证redo日志文件和数据文件LSN必须一致, 如果不一致就会触发CSR,最终保证一致；
+      例如:
+        我们做了一个事务,begin;update;commit.
+        1.在begin ,会立即分配一个TXID=tx_01.
+        2.update时,会将需要修改的数据页(dp_01,LSN=101),加载到data buffer中
+        3.DBWR线程,会进行dp_01数据页修改更新,并更新LSN=102
+        4.LOGBWR日志写线程,会将dp_01数据页的变化+LSN+TXID存储到redobuffer
+        5. 执行commit时,LGWR日志写线程会将redobuffer信息写入redolog日志文件中,基于WAL原则,在日志完全写入磁盘后,commit命令才执行成功(会将此日志打上commit标记)
+        6.假如此时宕机,内存脏页没有来得及写入磁盘,内存数据全部丢失
+        7.MySQL再次重启时,必须要redolog和磁盘数据页的LSN是一致的.但是,此时dp_01,TXID=tx_01磁盘是LSN=101,dp_01,TXID=tx_01,redolog中LSN=102,MySQL此时无法正常启动,MySQL触发CSR.在内存追平LSN号,触发ckpt,将内存数据页更新到磁盘,从而保证磁盘数据页和redolog LSN一值.这时MySQL正长启动
+      以上的工作过程,我们把它称之为基于REDO的"前滚操作"
+
+  - undo 回滚日志
+    顾名思义“回滚日志”。
+    **作用**：
+      在事务ACID过程中，实现的是“A” 原子性的作用，另外CI也依赖于Undo 。
+      在rolback时,将数据恢复到修改之前的状态；
+      在CSR中实现的是,将redo当中记录的未提交的时候进行回滚；
+      undo提供快照技术,保存事务修改之前的数据状态.保证了MVCC,隔离性,mysqldump的热备。
 
 ### 11.日志管理 ###
 
