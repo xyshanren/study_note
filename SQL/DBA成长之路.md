@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-25 22:27:28
+ * @LastEditTime: 2021-02-27 22:48:47
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -71,6 +71,16 @@
     - [数据恢复](#数据恢复)
     - [优化](#优化)
   - [12.备份与恢复](#12备份与恢复)
+    - [DBA在数据库备份恢复方面的职责](#dba在数据库备份恢复方面的职责)
+    - [备份类型](#备份类型)
+    - [备份方式及工具介绍](#备份方式及工具介绍)
+    - [逻辑备份和物理备份的比较](#逻辑备份和物理备份的比较)
+    - [备份策略](#备份策略)
+    - [逻辑备份工具-mysqldump](#逻辑备份工具-mysqldump)
+    - [备份恢复案例1(mysqldump+binlog)](#备份恢复案例1mysqldumpbinlog)
+    - [XBK(xtrabackup)的应用](#xbkxtrabackup的应用)
+    - [备份恢复案例2(XBK full_inc_binlog)](#备份恢复案例2xbk-full_inc_binlog)
+    - [MySQL数据迁移](#mysql数据迁移)
   - [13.主从复制及架构演变](#13主从复制及架构演变)
   - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
   - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
@@ -1770,9 +1780,367 @@ commit;
     --exclude-gtids='aabf49c8-6dbb-11eb-8fa1-080027f570fd:2,aabf49c8-6dbb-11eb-8fa1-080027f570fd:4'
     ```
 
+- 二进制日志的其他操作  
+  - 临时关闭当前窗口的二进制日志记录 `set sql_log_bin=0`  
+  - 自动清理日志配置  
+    参数: expire_logs_days 日志过期天数  
+    设置依据：至少是一个全备周期+1，企业建议至少2个全备周期+1  
+    设置：在线设置可以使用 `set [global] expire_logs_days=7` ,或者在初始化文件 my.cnf 中配置  
+  - 手工清理日志  
+
+    ```sql
+    PURGE BINARY LOGS BEFORE now() - INTERVAL 3 day;
+    PURGE BINARY LOGS TO 'mysql-bin.000010';
+    ```
+
+    >注意: 不要手工 rm binlog文件  
+
+    如果binlog文件被rm后怎么启动数据库？  
+    1.my.cnf binlog关闭掉,启动数据库  
+    2.把数据库关闭,开启binlog,启动数据库  
+
+  - `reset master;`  
+    删除所有binlog,并从000001开始重新记录日志  
+    *主从关系中，主库执行此操作，主从环境必崩*  
+  - 日志滚动  
+    - 手动滚动日志  
+      1.`flush logs;`  
+      2.使用命令 `mysqladmin -uroot -p flush-logs`  
+      3.重启mysql也会自动滚动一个新的日志文件  
+      4.日志文件达到1G大小(max_binlog_size)也会触发滚动日志  
+      5.备份的时候增加一些参数触发滚动  
+    - 日志文件大小设置  
+      使用命令查看 `show variables like '%max_binlog_size%';`  
+      日志文件达到1G大小(默认大小)  
+
 ### 优化 ###
 
+- slowlog
+  记录慢SQL语句的日志，定位低效SQL语句的工具日志  
+  - 开启慢日志（默认没有开启）  
+    初始化配置文件中的配置如下：  
+
+    ```cnf
+    # 开启slowlog
+    slow_query_log=1
+    # 设置slowlog存储位置，默认在datadir/主机名-slow.log
+    slow_query_log_file=/data/mysql/data/localhost-slow.log
+    # 设置慢SQL阈值
+    long_query_time=1
+    # 不使用索引的语句也记录
+    log_queries_not_using_indexes
+    ```
+
+  - mysqldumpslow 分析慢日志
+    使用命令 `mysqldumpslow -s c -t 10 /data/mysql/slow.log`  
+    说明，按使用次数排序取前10条语句  
+
+    **第三方工具**
+    <https://www.percona.com/downloads/percona-toolkit/LATEST/>  
+    yum install perl-DBI perl-DBD-MySQL perl-Time-HiRes perl-IO-Socket-SSL perl-Digest-MD5  
+    toolkit工具包中的命令:  
+    ./pt-query-diagest  /data/mysql/slow.log  
+    Anemometer 基于pt-query-digest将MySQL慢查询可视化  
+
 ## 12.备份与恢复 ##
+
+### DBA在数据库备份恢复方面的职责 ###
+
+- 设计备份策略：全备，增量，时间，自动  
+- 日常备份检查  
+  备份存在性，备份空间是否够用  
+- 定期恢复演练（测试库）  
+- 故障恢复  
+  通过现有备份能够数据库恢复到故障之前的时间点  
+- 迁移  
+  工具，停机时间，回退方案  
+
+### 备份类型 ###
+
+- 热备  
+  在数据库正常业务时,备份数据,并且能够一致性恢复。  
+  只有innodb支持热备  
+  对业务影响非常小  
+- 温备  
+  锁表备份,只能查询不能修改（myisam）  
+  影响到写入操作  
+- 冷备  
+  关闭数据库业务,数据库没有任何变更的情况下,进行备份数据  
+  业务停止  
+
+### 备份方式及工具介绍 ###
+
+- 逻辑备份工具  
+  基于SQL语句进行备份  
+  myslqdump(mdp) mysqlbinlog  
+- 物理备份工具  
+  基于磁盘数据文件备份  
+  xtrabackup(XBK) ：percona 第三方工具  
+  MySQL Enterprise Backup(MEB) 官方工具  
+
+### 逻辑备份和物理备份的比较 ###
+
+- mysqldump(MDP)  
+  **优点**：  
+  1.不需要下载安装  
+  2.备份出来的是SQL，文本格式，可读性高,便于备份处理  
+  3.压缩比较高，节省备份的磁盘空间  
+  **缺点**：
+  依赖于数据库引擎(mysqld)，需要从磁盘把数据(页)读出，然后转换成SQL进行转储，比较耗费资源，数据量大的话效率较低。  
+  **建议**：  
+  100G以内的数据量级，可以使用mysqldump  
+  超过TB以上，我们也可能选择的是mysqldump，配合分布式的系统  
+  (1EB  =1024 PB =1,000,000 TB)  
+- xtrabackup(XBK)  
+  **优点**：  
+  1.类似于直接cp数据文件，不需要管逻辑结构，相对来说性能较高  
+  **缺点**：  
+  1.可读性差  
+  2.压缩比低，需要更多磁盘空间  
+  **建议**：  
+  大于100G小于TB时使用  
+
+  >TB以上级别，一般会做分库分表，如果存储空间允许就用XBK，空间紧缺就用MDP。
+
+### 备份策略 ###
+
+备份方式：  
+全备:全库备份，备份所有数据  
+增量:备份变化的数据  
+逻辑备份=mysqldump+mysqlbinlog  
+物理备份=xtrabackup_full+xtrabackup_incr+binlog 或者 xtrabackup_full+binlog  
+
+备份周期:  
+根据数据量设计备份周期  
+比如：周日全备，周1-周6增量  
+
+其他：通过主从复制备份  
+
+### 逻辑备份工具-mysqldump ###
+
+- 客户端通用参数  
+
+  ```shell
+  -- -u  -p   -S   -h  -P    
+  -- 本地备份:
+  mysqldump -uroot -p  -S /tmp/mysql.sock
+  -- 远程备份:
+  mysqldump -uroot -p  -h 10.0.0.51 -P3306
+  ```
+
+- 基本备份参数  
+  **-A 全备**  
+
+    ```shell
+    # 例子:实现全库备份
+    mkdir -p /data/backup
+    mysqldump -uroot -p -A >/data/backup/full.sql
+    Enter password: 
+
+    mysqldump: [Warning] Using a password on the command line interface can be insecure.
+    Warning: A partial dump from a server that has GTIDs will by default include the GTIDs of all transactions, even those that changed suppressed parts of the database. If you don't want to restore GTIDs, pass --set-gtid-purged=OFF. To make a complete dump, pass --all-databases --triggers --routines --events. 
+
+    # 补充:
+    # 1.常规备份是要加 --set-gtid-purged=OFF,解决备份时的警告
+    mysqldump -uroot -p123 -A  --set-gtid-purged=OFF  >/backup/full.sql
+    # 2.构建主从时,做的备份,不需要加这个参数使用ON或不加
+    mysqldump -uroot -p123 -A  --set-gtid-purged=ON >/backup/full.sql
+    ```
+
+  **-B db1 db2 db3 备份多个单库**  
+  说明：生产中需要备份，生产相关的库和mysql库  
+  例子2 :  
+  `mysqldump -B mysql test --set-gtid-purged=OFF >/data/backup/b.sql`  
+  **备份单个或多个表**  
+  例子3: 备份world数据库下的city,country表(库名后不跟表名就是备份所有表)  
+  `mysqldump -uroot -p world city country >/data/backup/bak1.sql`  
+  注意，这种备份只备份建表+插入语句，所以以上备份恢复时，必须库事先存在，并且ues才能source恢复。  
+
+- 必加参数  
+  - -R  
+    在备份时，同时备份存储过程和函数，如果没有自动忽略。  
+  - -E  
+    在备份时，同时备份事件，如果没有自动忽略。  
+  - --triggers  
+    在备份时，同时备份触发器，如果没有自动忽略。  
+  - --master-data=2  
+    1.记录备份时的二进制日志文件名和position号，可以作为将来做日志截取的起点；  
+    2.自动锁表；  
+    3.配合`--single-transaction` 只对非InnoDB表进行锁表备份，InnoDB表进行“热“”备，实际上是实现快照备份。  
+    该参数的值说明  
+    |值|说明|
+    |:-:|:-|
+    |0|默认值|
+    |1|以`change master to`命令形式注入到备份中，可以用作主从复制|
+    |2|以注释的形式记录，备份时刻的文件名+postion号|
+  - --single-transaction  
+    对于 innodb 的表实现快照备份功能，不需要锁表。  
+    注意：参数`master-data`可以自动加锁  
+    1.在不加`--single-transaction` ,启动所有表的温备份，所有表都锁定;  
+    2.加上`--single-transaction` ,对innodb进行快照备份,对非innodb表可以实现自动锁表功能.  
+
+- 其他参数（非必加参数）  
+  - -F  
+    在备份时,刷新binlog日志,一个库一个日志  
+  - --set-gtid-purged=auto  
+    取值: AUTO/ON, OFF  
+    使用场景:  
+    1.`--set-gtid-purged=OFF` 可以使用在日常备份参数中，可加可不加。  
+    2.AUTO(不加时自动判断)/ON 在构建主从复制环境时需要的参数配置，推荐使用。  
+  - --max-allowed-packet=#  
+    设置文件大小(发送到服务器或从服务器接收的最大数据包长度)，比如设置为: 128M  
+
+- 一般全备命令  
+
+  ```shel
+  mysqldump -uroot -p123 -A -R --triggers --master-data=2 --single-transaction|gzip >/backup/full_$(date +%F).sql.gz
+  mysqldump -uroot -p123 -A -R --triggers --master-data=2 --single-transaction|gzip >/backup/full_$(date +%F-%T).sql.gz
+  ```
+
+### 备份恢复案例1(mysqldump+binlog) ###
+
+- 案例背景  
+  中小型互联网公司， MySQL 5.7.26 CentOS 7.6 数据量级80G，每日数据增量5-6M  
+- 备份策略  
+  每天mysqldump全备+binlog备份  
+- 故障描述  
+  某天下午2点，数据由于某原因数据损坏  
+- 处理思路  
+  1.挂出维护页  
+  2.评估数据损坏状态，全部丢失还是部分丢失  
+  3.全部丢失的话直接生产恢复，部分丢失可以从备份中导出单表数据或者测试库进行全备恢复  
+  4.恢复全备，将数据追溯到前一天晚上备份时刻  
+  5.截取从备份时刻到下午两点前的binlog进行恢复  
+  6.校验数据一致性  
+  7.撤维护页，恢复生产  
+- 处理结果
+  1.记过30-40分钟的处理，业务恢复  
+  2.评估此次故障处理的合理性和实用性  
+- 案例模拟  
+  - 1.进行全备  
+
+    ```shell
+    # 全备命令
+    mysqldump -uroot -p -A -R --triggers -E --master-data=2 --single-transaction >/data/backup/full.sql
+    # 查看备份文件
+    vim /data/backup/full.sql
+    # 找到以下两条关键信息，作为binlog恢复的参照
+    SET @@GLOBAL.GTID_PURGED='aabf49c8-6dbb-11eb-8fa1-080027f570fd:1-6';
+    -- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000004', MASTER_LOG_POS=194;
+    ```
+
+  - 2.模拟全备之后到下午两点前的业务操作  
+  - 3.模拟损坏  
+
+    ```shell
+    rm -rf /data/mysql/data/*
+    pkill mysqld
+    rm -rf /data/mysql/data/*
+    ```
+
+  - 4.初始化数据并启动数据库  
+
+    ```shell
+    # 初始化
+    mysqld --initialize-insecure --user=mysql --basedir=/application/mysql --datadir=/data/mysql/data
+    # 启动mysqld
+    systemctl start mysqld
+    ```
+
+  - 5.进行全备  
+
+    ```sql
+    -- 临时关闭binlog记录
+    set sql_log_bin=0;
+    -- 加载全备文件
+    source /data/backup/full.sql;
+    -- 刷新数据库
+    flush privileges;
+    ```
+
+  - 6.找binlog起点和终点  
+    根据全备文件记录的gtid结合binlog，截取需要恢复的日志生成恢复脚本  
+
+    ```sql
+    mysqlbinlog --skip-gtids --include-gtids='aabf49c8-6dbb-11eb-8fa1-080027f570fd:7-12' /data/binlog/mysql-bin.000004 >/data/backup/bin.sql
+    ```
+
+  - 7.恢复全备到故障点的数据  
+    命令同上，先关闭binlog记录，再source恢复脚本  
+
+- 扩展：从全备中导出单表（库）备份  
+  - 获得表结构  
+
+    ```shell
+    # 过滤出建表语句
+    sed -e'/./{H;$!d;}' -e 'x;/CREATE TABLE `city`/!d;q' full.sql>createtable.sql
+    ```
+
+  - 获得 insert into 语句，用于数据的恢复  
+
+    ```shell
+    # 过滤出插入数据语句
+    grep -i 'INSERT INTO `city`' full.sql >data.sql &
+    ```
+
+  - 获取单库的备份  
+
+    ```shell
+    sed -n '/^-- Current Database: `world`/,/^-- Current Database: `/p' all.sql >world.sql
+    ```
+
+>注意：  
+>1、mysqldump在备份和恢复时都需要mysql实例启动为前提。  
+>2、一般数据量级100G以内，大约15-45分钟可以恢复，数据量级很大很大的时候（PB、EB）  
+>3、mysqldump是覆盖恢复的方法。  
+
+一般我们认为，在同数据量级，物理备份要比逻辑备份速度快.  
+逻辑备份的优势:  
+1、可读性强  
+2、压缩比很高  
+
+### XBK(xtrabackup)的应用 ###
+
+- 安装  
+  - 安装依赖包  
+
+    ```shell
+    wget -O /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
+    yum -y install perl perl-devel libaio libaio-devel perl-Time-HiRes perl-DBD-MySQL libev
+    ```
+
+  - 下载软件并安装  
+
+    ```shell
+    wget https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.4.12/binary/redhat/7/x86_64/percona-xtrabackup-24-2.4.12-1.el7.x86_64.rpm
+
+    # centos6使用下面的地址
+    # https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.4.4/binary/redhat/6/x86_64/percona-xtrabackup-24-2.4.4-1.el6.x86_64.rpm
+
+    # 以上地址太慢的话，使用国内镜像地址
+    # https://mirrors.tuna.tsinghua.edu.cn/percona/centos/7/RPMS/x86_64/percona-xtrabackup-24-2.4.21-1.el7.x86_64.rpm
+
+    # 安装RPM包
+    yum -y install percona-xtrabackup-24-2.4.4-1.el7.x86_64.rpm
+    ```
+
+- 备份方式——物理备份  
+  1.对于非Innodb表（比如 myisam），锁表cp数据文件，属于一种温备份。  
+  2.对于Innodb的表（支持事务的），不锁表，拷贝数据页，最终以数据文件的方式保存下来，并且把一部分redo和undo一并备走，属于热备方式。  
+
+- 面试题： xbk 在innodb表备份恢复的流程  
+  0、xbk备份执行的瞬间,立即触发ckpt,已提交的数据脏页,从内存刷写到磁盘,并记录此时的LSN号  
+  1、备份时，拷贝磁盘数据页，并且记录备份过程中产生的redo和undo一起拷贝走,也就是checkpoint LSN之后的日志  
+  2、在恢复之前，模拟Innodb“自动故障恢复”的过程，将redo（前滚）与undo（回滚）进行应用  
+  3、恢复过程是cp 备份到原来数据目录下  
+
+- 基本命令  
+  `xtrabackup` , `innobackupex`  
+  查看版本 `innobackupex -V` `innobackupex --version`  
+
+### 备份恢复案例2(XBK full_inc_binlog) ###
+
+### MySQL数据迁移 ###
 
 ## 13.主从复制及架构演变 ##
 
