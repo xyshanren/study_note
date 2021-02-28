@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-27 22:48:47
+ * @LastEditTime: 2021-02-28 22:27:01
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -82,6 +82,9 @@
     - [备份恢复案例2(XBK full_inc_binlog)](#备份恢复案例2xbk-full_inc_binlog)
     - [MySQL数据迁移](#mysql数据迁移)
   - [13.主从复制及架构演变](#13主从复制及架构演变)
+    - [主从复制简介](#主从复制简介)
+    - [搭建主从复制](#搭建主从复制)
+    - [主从复制工作过程](#主从复制工作过程)
   - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
   - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
   - [16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster）](#16mysql-57-高可用及分布式架构-扩展mgrinnodb-cluster)
@@ -753,9 +756,9 @@ mysql -uroot -p -S /tmp/mysql.sock # -S可省略
 
   ```shell
   mv /etc/my.cnf /etc/my.cnf.bak
-  mysqld --initialize-insecure  --user=mysql --datadir=/data/3307/data --basedir=/app/mysql
-  mysqld --initialize-insecure  --user=mysql --datadir=/data/3308/data --basedir=/app/mysql
-  mysqld --initialize-insecure  --user=mysql --datadir=/data/3309/data --basedir=/app/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3307/data --basedir=/application/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3308/data --basedir=/application/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3309/data --basedir=/application/mysql
   ```
 
 - systemd管理多实例
@@ -2138,11 +2141,338 @@ commit;
   `xtrabackup` , `innobackupex`  
   查看版本 `innobackupex -V` `innobackupex --version`  
 
+- innobackupex使用  
+  - 全备  
+    使用命令（指定备份路径） `innobackupex --user=root --password=123 /data/bak`  
+    自主定制备份路径名 `innobackupex --user=root --password=123 --no-timestamp /data/bak/full_$(date +%F)`
+    还可以指定socket文件 `innobackupex --user=root --password=123456 -S /tmp/mysql.sock /data/bak/`  
+    还可以指定使用的配置文件 `innobackupex --defaults-file=/etc/my.cnf --user=root --password=123456 /data/bak/`  
+    注意，该工具依赖于/etc/my.cnf文件，如果配置文件不在默认位置，可以使用以上命令指定。  
+  - 备份文件说明  
+
+    ```txt
+    xtrabackup_binlog_info
+    xtrabackup_checkpoints
+    xtrabackup_info
+    xtrabackup_logfile
+
+    xtrabackup_binlog_info ：（备份时刻的binlog位置）
+    mysql-bin.000003    536749
+    79de40d3-5ff3-11e9-804a-000c2928f5dd:1-7
+    记录的是备份时刻，binlog的文件名字和当时的结束的position，可以用来作为截取binlog时的起点。
+
+    xtrabackup_checkpoints ：
+    backup_type = full-backuped
+    from_lsn = 0            上次所到达的LSN号(对于全备就是从0开始,对于增量有别的显示方法)
+    to_lsn = 160683027      备份开始时间(ckpt)点数据页的LSN    
+    last_lsn = 160683036    备份结束后，redo日志最终的LSN(to与last相差9的话认为是相等的)
+    compact = 0
+    recover_binlog_info = 0
+    （1）备份时刻，立即将已经commit过的，内存中的数据页刷新到磁盘(CKPT).开始备份数据，数据文件的LSN会停留在to_lsn位置。
+    （2）备份时刻有可能会有其他的数据写入，已备走的数据文件就不会再发生变化了。
+    （3）在备份过程中，备份软件会一直监控着redo的undo，如果一旦有变化会将日志也一并备走，并记录LSN到last_lsn。
+    从to_lsn  ----》last_lsn 就是，备份过程中产生的数据变化.
+    ```
+
+- 全备的恢复  
+  - 故障演练
+
+    ```shell
+    # 杀进程
+    pkill mysqld
+    # 删掉所有数据文件
+    \rm -rf /data/mysql/data/*
+    ```
+
+  - 准备备份（Prepared）-生产中必做  
+    将redo进行重做，已提交的写到数据文件，未提交的使用undo回滚掉。模拟了CSR的过程  
+    `innobackupex --apply-log  /data/bak/2021-02-28_11-45-00`  
+
+  - 恢复备份  
+    前提：  
+    1、被恢复的目录是空  
+    2、被恢复的数据库的实例是关闭  
+
+    ```shell
+    # 拷贝备份文件到数据文件中
+    cp -a * /data/mysql/data/
+    # 授权
+    chown -R mysql.mysql /data/mysql/data/*
+
+    # 如果要指定新的数据目录就需要建目录、授权、拷贝、修改配置文件
+    mkdir /data/mysql1
+    chown -R mysql.mysql /data/mysql1
+    cp -a /backup/full/* /data/mysql1/
+    ```
+
+  - 启动数据库  
+    使用命令 `systemctl start mysqld`  
+
+- XBK 增量备份(incremental)  
+  - 1.增量备份的方式，是基于上一次备份进行增量。  
+  - 2.增量备份无法单独恢复，必须基于全备进行恢复。  
+  - 3.所有增量必须要按顺序合并到全备中。  
+
+- XBK 增量备份恢复演练  
+  - 1.模拟周日全备  
+    `innobackupex --user=root --password=123 --no-timestamp /data/bak/full_$(date +%F)`  
+
+  - 2.模拟周一的数据变化  
+
+    ```sql
+    create database xbk charset utf8mb4;
+    use xbk;
+    create table t1(id int);
+    insert into t1 values(1),(2),(3),(4);
+    ```
+
+  - 3.模拟周一晚上增量备份
+
+    ```shell
+    innobackupex --user=root --password=123456 --no-timestamp --incremental --incremental-basedir=/data/bak/full_2021-02-28 /data/bak/inc_$(date +%F)
+    ```
+
+  - 4.模拟周二的数据变化  
+
+    ```sql
+    use xbk;
+    create table t2(id int);
+    insert into t2 values(1),(2),(3),(4);
+    ```
+
+  - 5.模拟周二晚上的增量备份  
+
+    ```shell
+    innobackupex --user=root --password=123456 --no-timestamp --incremental --incremental-basedir=/data/bak/inc_2021-02-28 /data/bak/inc_2_$(date +%F)
+    ```
+
+  - 6.恢复  
+    思路：合并所有的增量到全备，每个XBK备份都需要恢复准备(prepare)  
+    恢复准备时的参数 `--apply-log --redo-only`  
+
+    ```shell
+    # 先整理全备
+    innobackupex --apply-log --redo-only /data/bak/full_2021-02-28/
+    # 合并整理周一增量到全备
+    innobackupex --apply-log --redo-only --incremental-dir=/data/bak/inc_2021-02-28 /data/bak/full_2021-02-28/
+    # 合并整理最后一次增量到全备，注意，此时不带参数 --redo-only
+    innobackupex --apply-log --incremental-dir=/data/bak/inc_2_2021-02-28 /data/bak/full_2021-02-28/
+    # 再次整理全备
+    innobackupex --apply-log /data/bak/full_2021-02-28/
+    # 破坏数据库并恢复数据
+    innobackupex --copy-back /data/bak/full_2021-02-28/
+    # 授权
+    chown -R mysql.mysql /data/mysql/data/*
+    # 启动
+    systemctl start mysqld
+    ```
+
 ### 备份恢复案例2(XBK full_inc_binlog) ###
+
+- 案例描述
+
+  ```txt
+  案例背景：某中型互联网公司 MySQL 5.7.26 Centos 7.6 数据量级600G 每日新增15-50M
+  备份策略：周日XBK全备+周一到周六inc增量+binlog备份，每天23:00进行
+  故障描述：周三下午2点，数据损坏
+  处理思路：
+    1.挂出维护页
+    2.评估数据损坏状态
+      2.1.全部丢失 推荐直接生产恢复
+      2.2.部分丢失
+    3.整理合并所有备份：full+inc1+inc2...
+    4.截取周二晚上到周三下午故障点的binlog日志
+    5.恢复全备，恢复binlog
+    6.检查数据的完整性
+    7.恢复业务
+  处理结果：
+    1.经过70-80分钟的处理，业务恢复
+    2.评估此次故障处理的合理性和使用性
+  ```
+
+- 案例模拟  
+  - 全部数据丢失  
+    只需要，按XBK应用的增量备份恢复演练中的步骤进行恢复，再加上 binlog 的日志截取恢复到故障点。  
+    binlog日志截取使用命令为：  
+    `mysqlbinlog --skip-gtids --include-gtids='xxxx:7-12' /data/binlog/mysql-bin.000004 >/data/backup/bin.sql`  
+  - 如果只是少量表数据被损坏  
+    可以从备份中找到建表语句先恢复表结构，再利用表空间迁移的命令进行表数据的恢复，命令如下：  
+
+    ```sql
+    alter table tbl_name discard tablespace;
+    alter table tbl_name import tablespace;
+    ```
+
+    >以上，如果表数据在备份后还有数据变化，就需要根据binlog日志追加变化。
+
+- 实际生产中的备份命令  
+
+```shell
+innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timestamp --stream=tar --use-memory=256M --parallel=8 /data/mysql_backup | gzip | ssh root@10.0.0.52 "cat - > /data/mysql_backup.tgz"
+# --stream=tar 启用流的压缩方式进行备份，稍微提高性能
+# --use-memory=256M 备份的时候单独使用一块内存
+# --parallel=8 开启并发备份，一般设置为CPU核心的一半
+# | gzip | ssh 推送到远程进行保存
+```
 
 ### MySQL数据迁移 ###
 
+- 迁移前要考虑的问题  
+  技术方面：选择工具 MDP XBK  
+  非技术：停机时间，回退方案  
+- 换主机  
+  - 数据量小  
+    思路：  
+    1.使用 MDP,XBK 在线进行全备，SCP到目标机上进行恢复。  
+    2.追加恢复全备之后的日志，缩小差距。  
+    3.申请停机（短时间，比如5分钟）。  
+    4.进行剩余部分的binlog继续追加恢复（可以搭建主从的方式来替代）。  
+    5.校验数据。  
+    6.进行业务的割接。  
+  - 数据量大  
+    思路：  
+    1.使用 XBK 在线进行全备，SCP到目标机上进行恢复。  
+    2.搭建主从环境。  
+    3.申请停机（相对长时间，比如15分钟）。  
+    4.校验数据。  
+    5.进行业务的割接。  
+- 升级数据库版本  
+  例如： 5.6 -> 5.7  
+  - 备份的方式  
+    建议使用 MDP  逻辑备份方式，按业务库进行分别备份，排除掉 information_schema,performance_schema,sys ，恢复停机追加等完成后升级数据字典。  
+  - 跨版本主从复制  
+    进行过滤复制，排除掉 information_schema,performance_schema,sys  
+  - 官方升级建议  
+    安装 5.7 然后将 datadir 指定为原data目录，使用 mysqld_safe 启动，然后使用 mysql_upgrade 命令升级的字典就可以正常启动了。  
+- 异构迁移-系统不一样（Linux,Windows）  
+  只能用逻辑备份，类似换主机  
+- 异构迁移-数据库产品不同  
+  使用收费工具 OGG  
+  Oracle  --OGG-->  MySQL  
+  MySQL   --CSV-->  MongoDB,ES  
+  MySQL   -JSON-->  MongoDB,ES  
+
 ## 13.主从复制及架构演变 ##
+
+### 主从复制简介 ###
+
+依赖于二进制日志的，准实时备份的一个多节点架构。  
+
+
+- 主从复制的前提  
+  1.两台以上mysql实例 ,server_id,server_uuid不同。  
+  2.主库开启二进制日志。  
+  3.主库需要授权一个专用的复制用户。  
+  4.保证主从开启之前的某个时间点,从库数据是和主库一致(不一致则备份恢复)。  
+  5.告知从库,复制user,passwd,IP port,以及复制起点(change master to)。  
+  6.开启专用线程(三个):Dump thread,IO thread,SQL thread (start slave)。  
+
+### 搭建主从复制 ###
+
+- 准备多实例  
+  参照 [MySQL多实例](#mysql多实例)  
+- 检查 server_id  
+
+  ```shell
+  mysql -S /data/3307/mysql.sock -e "select @@server_id"
+  mysql -S /data/3308/mysql.sock -e "select @@server_id"
+  mysql -S /data/3309/mysql.sock -e "select @@server_id"
+  ```
+
+- 检查3307(主库)的二进制日志情况  
+  `mysql -S /data/3307/mysql.sock -e "show variables like '%log_bin%';"`  
+
+- 主库创建复制用户  
+  连接主库 `mysql -S /data/3307/mysql.sock`  
+
+  ```sql
+  -- 创建用户
+  grant replication slave on *.* to repl@'localhost' identified by '123';
+  grant replication slave on *.* to repl@'192.168.3.%' identified by '123';
+  ```
+
+- 进行主库数据备份  
+  注意，新环境的话主从数据一致不需要备份，旧环境的话使用历史备份数据就行  
+
+  ```shell
+  mysqldump -S /data/3307/mysql.sock -A --master-data=2 -R -E --triggers --single-transaction > /tmp/full.sql
+  ```
+
+- 恢复数据到从裤(3308)  
+
+  ```sql
+  -- 先进入3308的MySQL
+  -- 关闭binlog记录
+  set sql_log_bin=0;
+  -- 恢复数据
+  source /tmp/full.sql
+  ```
+
+- 告知从库复制的信息，复制user,passwd,IP port,以及复制起点  
+
+  ```sql
+  -- 查看帮助，拿到命令模板
+  help change master to;
+  -- 根据主库的信息填写命令并执行
+  CHANGE MASTER TO
+    MASTER_HOST='localhost',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='123',
+    MASTER_PORT=3307,
+    MASTER_LOG_FILE='mysql-bin.000002',
+    MASTER_LOG_POS=447,
+    MASTER_CONNECT_RETRY=10;
+  ```
+
+- 启动复制线程  
+  `start slave;`  
+
+- 如果 change master to 命令的信息输入错误，使用下列语句重新输入信息  
+
+  ```sql
+  -- 停止线程
+  stop slave;
+  -- 清除信息
+  reset slave all;
+  -- 重新输入
+  CHANGE MASTER TO
+    MASTER_HOST='127.0.0.1',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='123',
+    MASTER_PORT=3307,
+    MASTER_LOG_FILE='mysql-bin.000002',
+    MASTER_LOG_POS=447,
+    MASTER_CONNECT_RETRY=10;
+  -- 启动线程
+  start slave;
+  ```
+
+- 查看主从连接状态  
+
+  ```sql
+  -- 从库中执行
+  show slave status\G;
+  -- 查看以下两个参考，都是Yes才是正常工作
+  -- Slave_IO_Running: Yes
+  -- Slave_SQL_Running: Yes
+  ```
+
+### 主从复制工作过程 ###
+
+- 名词解释  
+  - 文件  
+    主库：binlog  
+    从库：  
+    relay-log 中继日志  
+    master.info 主库信息文件  
+    relay-log.info 中继日志应用信息  
+  - 线程  
+    主库：binlog_dump_thread 二进制日志投递线程  
+    从库：  
+    IO_Thread : 从库的IO线程 请求和接收binlog  
+    SQL_Thread : 从库的SQL线程 回放日志  
+
+
 
 ## 14.传统的高可用及读写分离（MHA&Atlas） ##
 
