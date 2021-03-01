@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-28 22:27:01
+ * @LastEditTime: 2021-03-01 21:46:42
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -85,6 +85,11 @@
     - [主从复制简介](#主从复制简介)
     - [搭建主从复制](#搭建主从复制)
     - [主从复制工作过程](#主从复制工作过程)
+    - [主从复制监控及故障处理](#主从复制监控及故障处理)
+    - [延时从库](#延时从库)
+    - [过滤复制](#过滤复制)
+    - [半同步复制-了解](#半同步复制-了解)
+    - [GTID复制](#gtid复制)
   - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
   - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
   - [16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster）](#16mysql-57-高可用及分布式架构-扩展mgrinnodb-cluster)
@@ -2358,7 +2363,6 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
 依赖于二进制日志的，准实时备份的一个多节点架构。  
 
-
 - 主从复制的前提  
   1.两台以上mysql实例 ,server_id,server_uuid不同。  
   2.主库开启二进制日志。  
@@ -2463,14 +2467,331 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   - 文件  
     主库：binlog  
     从库：  
-    relay-log 中继日志  
+    relay-log.000001 中继日志  
     master.info 主库信息文件  
     relay-log.info 中继日志应用信息  
   - 线程  
     主库：binlog_dump_thread 二进制日志投递线程  
     从库：  
-    IO_Thread : 从库的IO线程 请求和接收binlog  
-    SQL_Thread : 从库的SQL线程 回放日志  
+    IO_Thread : 从库的IO线程——请求和接收binlog  
+    SQL_Thread : 从库的SQL线程——回放日志  
+
+![主从结构](ms1.webp)
+![主从工作](ms2.webp)
+![主从工作](ms3.png)
+
+- 工作原理  
+
+  ```txt
+  1.从库执行 change master to 语句，会将主库信息(ip pot user password binlog position等)写入到 master.info 中。
+  1.从库执行 start slave 语句，会启动IO线程和SQL线程。
+  3.IO_T 读取 master.info 文件，获取主库信息。
+  4.IO_T连接主库，主库会生成一个准备binlog DUMP线程来响应IO_T。
+  5.IO_T根据 master.info 记录的binlog文件名和position号，向DUMP_T请求最新的日志。
+  6.DUMP_T检查主库的binlog日志，如果有新的，截取并传送给IO_T。
+  7.IO_T将收到日志后存储到TCP/IP 缓存中，并立即返回ACK给主库 ，主库工作完成。
+  8.IO_T将缓存中的数据，存储到relay-log日志文件，然后更新master.info文件binlog文件名和postion，IO_T工作完成。
+  9.SQL_T读取relay-log.info文件，获取到上次执行到的relay-log的位置作为起点，回放relay-log日志(执行日志)。
+  10.SQL_T回放完成之后，会更新relay-log.info文件。
+  11.relay-log会有定期自动清理的功能。
+  细节：
+  1.主库一旦有新的日志生成（发生信息修改，更新二进制日志完成后），会发送“信号”给binlog dump ，IO线程再请求。
+  ```
+
+### 主从复制监控及故障处理 ###
+
+- 主从监控  
+  **查看主库中dump线程的情况**：  
+
+  ```sql
+  -- 使用命令
+  mysql> show processlist;
+  +----+------+-----------------+------+-------------+------+---------------------------------------------------------------+------------------+
+  | Id | User | Host            | db   | Command     | Time | State
+            | Info             |
+  +----+------+-----------------+------+-------------+------+---------------------------------------------------------------+------------------+
+  |  2 | repl | localhost:53958 | NULL | Binlog Dump |   92 | Master has sent all binlog to slave; waiting for more updates | NULL             |
+  |  3 | root | localhost       | NULL | Query       |    0 | starting
+            | show processlist |
+  +----+------+-----------------+------+-------------+------+---------------------------------------------------------------+------------------+
+  2 rows in set (0.00 sec)
+  -- state列中的描述表示dump线程正常
+  ```
+
+  **查看从库slave状态**：  
+
+  ```sql
+  -- 使用命令
+  mysql> show slave status\G;
+  *************************** 1. row ***************************
+  Slave_IO_State: Waiting for master to send event
+  Master_Host: localhost                      主库的ip
+  Master_User: repl                           复制用户名
+  Master_Port: 3307                           主库的端口
+  Connect_Retry: 10                           连接中断后重试次数
+  Master_Log_File: mysql-bin.000003           已获取的binlog文件名
+  Read_Master_Log_Pos: 154                    已获取的binlog位置
+  --------- 以上读取的主库的信息(master.info) ---------------------------
+  Relay_Log_File: localhost-relay-bin.000006  从库已经运行过的relay-log的文件名
+  Relay_Log_Pos: 367                          从库已经运行过的relay-log的位置点
+  --------- 以上是从库的relay-log的信息(relay-log.info) -----------------
+  Slave_IO_Running: Yes                       IO线程工作状态
+  Slave_SQL_Running: Yes                      SQL线程工作状态
+  --------- 以上是从库复制线程工作状态 ---------------------------
+  Replicate_Do_DB:
+  Replicate_Ignore_DB:
+  Replicate_Do_Table:
+  Replicate_Ignore_Table:
+  Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+  --------- 以上是过滤复制相关的状态 ---------------------------
+  ...
+  Seconds_Behind_Master: 0                    从库延时主库的时间（以秒为单位）
+  ...
+  Last_IO_Errno: 0                            IO线程报错的号码
+  Last_IO_Error:                              IO线程报错的具体信息
+  Last_SQL_Errno: 0                           SQL线程报错的号码
+  Last_SQL_Error:                             SQL线程报错的具体信息
+  --------- 以上是从库线程报错详细信息 ---------------------------
+  ...
+  --------- 延时从库相关信息 ------------------------------------
+  SQL_Delay: 0                                延时从库设定的时间
+  SQL_Remaining_Delay: NULL                   延时操作剩余时间
+  ----------------------------------------------------------------
+  ...
+  --------- GTID复制信息 ------------------------------------
+  Retrieved_Gtid_Set:                         接收到的GTID的个数
+  Executed_Gtid_Set:                          执行了的GTID的个数
+  ...
+  1 row in set (0.00 sec)
+  ```
+
+- 主从故障的分析及处理  
+  主要是监控从库的线程状态，重点关注以下信息：  
+  从库复制线程工作状态和从库线程报错信息，具体命令和字段见上面的监控说明。  
+  - IO线程故障  
+    - 连接主库连接不上 状态为 connecting  
+      **原因一般是**：  
+      1.ip port 用户密码等信息不对  
+      2.服务器 skip_name_resolve 设置  
+      3.连接数达到上限  
+      4.网络不通  
+      5.防火墙  
+      **处理思路**：使用命令 `mysql -u -p -h -P` 手工连接主库看具体的报错进行分析解决。  
+      **处理步骤**：以上如果是主库信息的问题，需要重写master.info ,使用命令如下命令：  
+
+    ```sql
+    stop slave;
+    reset slave all;
+    change master to ...;
+    start slave;
+    ```
+
+    - 请求新的binlog 状态为 no  
+      **原因一般是**：  
+      1.日志名不对 —— 看 Master_Log_File 参数对比备份中或者主库当前日志信息。  
+      2.日志损坏或日志不连续 —— 比如主库重置日志了(reset master)，需要重设marster.info信息binlog日志设置从初始位置开始(154)。  
+      3.写relay-log出问题 —— 几率很小  
+      4.更新master.info出问题 —— 几率很小  
+      5.server_id重复 —— 修改从库的id  
+      >在从库的错误日志里也会有详细的记录。
+
+  - SQL线程故障  
+    SQL线程会读取和更新 relay-log.info ，读取 relay-log 文件并执行日志。  
+    **原因一般是**：
+    1.如果以上文件损坏会导致SQL线程的故障 —— 这种情况比较少见，出现了只能重新构建主从。  
+    2.relay-log中的SQL语句执行不成功 —— 主从数据库版本差异较大（少见），或者主从配置参数不一致（例如 sql_mode），或者主从数据不一致。  
+    >对于主从数据不一致，例如创建、删除和插入等操作在从库遇到数据存在或者约束冲突；  
+    >导致数据不一致的原因主要是管理不规范导致使用从库进行了写入操作，比如在从库建库表、插入数据等；  
+    >此时恢复主从的方法，推荐讲从库恢复到误操作前（比如删除建的库表数据等），然后重启 start slave.  
+    >MySQL为该问题提供了跳过错误操作的方法，先关闭slave 设置 `set global sql_slave_skip_counter = 1;` 然后重启slave.(非常不推荐使用)  
+    >另外MySQL还支持在my.cnf中配置自动跳过错误，`slave-skip-errors = 1032,1062,1007` (非常不推荐使用)  
+
+    **万全的解决方法**：  
+    1.设置从库只读，防止写入。  
+    参数为：`show variables like '%read_only%';`  
+    >注意：只会影响到普通用户，对管理员用户无效。  
+
+    2.使用中间件，做成读写分离的架构。  
+
+  - 主从延时原因分析  
+    从库延时主库时间 Seconds_Behind_Master 该参数不太准确，主要看延迟的日志量。  
+    - 主库方面  
+      1.日志写入不及时 —— 双一标准之 sync_binlog=1 事务提交就写入binlog , 5.6以后默认开启。  
+      2.主库并发业务较高导致dump线程传送不及时 —— 提高硬件，或进行业务拆分（分布式架构）。  
+      3.从库太多 —— 可以加一个中间库(级联)，只负责复制，并且可以利用 blackhok 存储引擎只生成binlog不进行SQL回放的特点，减少消耗。(较少见)  
+      4.主库发生了大事务，会阻塞后续的所有的事务的运行 —— 将事务进行拆分。  
+      5.对于传统 replication，主库事务可以并行，但传送时是串行，当主库 TPS 很高时，会产生比较大的延时。  
+      >处理这种并发事务多导致延时的问题，使用 group commit.  
+      >5.6开始加入了GTID，在复制时可以将原来串行的传输模式变成并行的。  
+      >出了GTID支持外，还需要双一保证(5.7默认开启双一)。  
+
+    - 从库方面  
+      SQL线程  
+      传统的 replication 中, SQL线程只有一个，只能串行执行reply的事务。  
+      在5.6中出现了database级别的多线程SQL ，但只能针对不同库下的事务，到5.7版本加入了MTS ，真正实现了事务级别的并发SQL.  
+      >关于MTS的官方文档<https://dev.mysql.com/worklog/task/?id=6314>  
+
+- 常见错误代码:
+
+  ```txt
+  1007:对象已存在
+  1032:无法执行DML
+  1062:主键冲突,或约束冲突
+  ```
+
+### 延时从库 ###
+
+- 介绍  
+  人为配置的一种特殊从库，人为配置从库和主库延时时间。  
+- 为什么要有延时从库  
+  应对数据库故障：  
+  物理损坏 —— 操作系统或磁盘损坏等 —— 传统的主从复制，比较擅长解决物理损坏。  
+  逻辑损坏 —— drop,delete等 —— 对于逻辑损坏，传统主从复制无法应对，这时候延时成从库就派上用场了。  
+- 设计理念  
+  对SQL线程进行延时设置  
+- 延时多久合适  
+  一般延时3-6小时，具体看公司对于故障的反应时间。  
+- 如何设置  
+
+  ```sql
+  -- 停止线程
+  stop slave;
+  -- 设置延时，5分钟
+  CHANGE MASTER TO MASTER_DELAY = 300;
+  -- 启动线程
+  start slave;
+  -- 查看状态
+  show slave status \G;
+  -- 配置结果
+  -- SQL_Delay: 300
+  -- SQL_Remaining_Delay: NULL
+  ```
+
+- 如何使用延时从库  
+  - 思路  
+    发现问题了：  
+    1.停止SQL线程，停止主库业务。  
+    2.手工模拟SQL线程恢复relay-log到问题点之前的日志。  
+    3.找到起点(relay-log.info)和终点(问题操作)，截取relay-log日志。  
+    4.恢复截取的日志，验证数据的可用性。  
+
+  - 模拟问题操作  
+
+    ```sql
+    -- 在主库中进行删库操作
+    create database delay charset utf8mb4;
+    use delay;
+    create table t1(id int);
+    insert into t1 values(1),(2),(3);
+    commit;
+    drop database delay;
+    ```
+
+  - 开始处理  
+    1.停SQL线程 `stop slave sql_thread;`  
+    2.找relay-log的起点和终点  
+    -> 起点使用命令 `show slave status\G;` 看 `Relay_Log_File`和`Relay_Log_Pos`  
+    -> 终点使用命令 `show relaylog events in 'localhost-relay-bin.000002';` 找到drop操作的pos值。  
+    3.截取日志  
+    `mysqlbinlog --start-position=320 --stop-position=992 /data/3308/data/localhost-relay-bin.000002 >/tmp/relay.sql`  
+    4.从库恢复  
+
+    ```sql
+    set sql_log_bin=0;
+    source /tmp/relay.sql;
+    ```
+
+    5.将从库替换为主库，对外提供服务  
+
+    ```sql
+    -- 停线程
+    stop slave;
+    -- 清除从库配置
+    reset slave all;
+    -- 然后业务修改为连接该库
+    ```
+
+    6.补偿原主库数据，与新主库保持一致，并重新构建主从  
+
+### 过滤复制 ###
+
+- 在主库中过滤(了解，一般不使用)  
+  通过以下两个参数控制：  
+  `binlog_do_db` : 白名单，只记录设置库的日志。  
+  `binlog_ignore_db` : 黑名单，忽略设置库的日志。  
+  >通过`show master status;`命令查看配置情况。  
+
+- 在从库中过滤  
+  在SQL线程回放日志时进行过滤。  
+  通过以下参数来配置需要复制的库或者表：  
+  1.设置要复制或者忽略的库  
+  replicate_do_db,replicate_ignore_db  
+  2.设置要复制或者忽略的表  
+  replicate_do_table,replicate_ignore_table  
+  3.设置要复制或忽略的表，使用模糊匹配  
+  replicate_wild_do_table,replicate_wild_ignore_table  
+  >通过`show slave status\G;`命令查看配置情况。  
+
+### 半同步复制-了解 ###
+
+- 作用  
+  **解决主从数据一致性问题**  
+
+- 半同步复制工作原理  
+  1. 主库执行新的事务,commit时,更新 `show master status\G;` ,触发一个信号。  
+  2. binlog dump 接收到主库的`show master status\G;`信息,通知从库日志更新了。  
+  3. 从库IO线程请求新的二进制日志事件。  
+  4. 主库会通过dump线程传送新的日志事件,给从库IO线程。  
+  5. 从库IO线程接收到binlog日志,当日志写入到磁盘上的relaylog文件时,给主库ACK_receiver线程。  
+  6. ACK_receiver线程触发一个事件,告诉主库commit可以成功了。  
+  7. 如果ACK达到了我们预设值的超时时间,半同步复制会切换为原始的异步复制。  
+
+- 配置半同步复制  
+
+  ```txt
+  加载插件
+  主:
+  INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so';
+  从:
+  INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
+  查看是否加载成功:
+  show plugins;
+  启动:
+  主:
+  SET GLOBAL rpl_semi_sync_master_enabled = 1;
+  从:
+  SET GLOBAL rpl_semi_sync_slave_enabled = 1;
+  重启从库上的IO线程
+  STOP SLAVE IO_THREAD;
+  START SLAVE IO_THREAD;
+  查看是否在运行
+  主:
+  show status like 'Rpl_semi_sync_master_status';
+  从:
+  show status like 'Rpl_semi_sync_slave_status';
+  ```
+
+- 与传统复制（异步复制）的区别  
+  是一个插件形式提供的功能：  
+  主库会有一个 ACK_receiver线程，只有接收到从库发来的ACK确认，主库事务才能提交成功。  
+  从库会有一个ACK_send线程，只有等relay-log落地才能发送ACK确认。  
+  主库 ACK_receiver线程只会等10s，如还没收到ACK确认，会自动替换为异步复制。  
+
+> 5.7.17开始出现MGR，相比半同步复制会更安全更高效，到8.0版本MGR才成熟。  
+
+### GTID复制 ###
+
+- 作用  
+  group commit,MTS  
+
+- 核心参数  
+
+  ```cnf
+  gtid-mode=on                        --启用gtid类型，否则就是普通的复制架构。
+  enforce-gtid-consistency=true       --强制GTID的一致性。
+  log-slave-updates=1                 --强制刷新从库二进制日志。应用场景：1.高可用(MHA) 2.级联复制的中间库。
+  ```
 
 
 
