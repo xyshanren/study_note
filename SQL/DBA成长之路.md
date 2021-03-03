@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-01 21:46:42
+ * @LastEditTime: 2021-03-03 22:46:41
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -91,9 +91,29 @@
     - [半同步复制-了解](#半同步复制-了解)
     - [GTID复制](#gtid复制)
   - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
+    - [高可用MHA](#高可用mha)
+    - [主从复制架构演变](#主从复制架构演变)
+    - [MHA架构模型](#mha架构模型)
+    - [MHA工作过程](#mha工作过程)
+    - [MHA故障模拟及处理](#mha故障模拟及处理)
+    - [MHA的vip功能](#mha的vip功能)
+    - [MHA的邮件提醒](#mha的邮件提醒)
+    - [Binlog Server](#binlog-server)
+    - [MySQL读写分离Atlas](#mysql读写分离atlas)
+    - [Atlas基本管理](#atlas基本管理)
+    - [其他读写分离产品扩展](#其他读写分离产品扩展)
   - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
+    - [MyCAT基础架构图](#mycat基础架构图)
+    - [MyCAT基础架构准备](#mycat基础架构准备)
+    - [MySQL分布式架构介绍](#mysql分布式架构介绍)
+    - [MyCAT安装和配置](#mycat安装和配置)
+    - [MyCAT核心特性-分片(水平拆分)](#mycat核心特性-分片水平拆分)
   - [16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster）](#16mysql-57-高可用及分布式架构-扩展mgrinnodb-cluster)
   - [17.MySQL优化（安全，性能）](#17mysql优化安全性能)
+    - [优化哲学](#优化哲学)
+    - [优化工具的使用](#优化工具的使用)
+    - [优化思路分解](#优化思路分解)
+    - [优化细节](#优化细节)
     - [锁](#锁)
   - [18.MySQL监控（zabbix,open-falcon）](#18mysql监控zabbixopen-falcon)
   - [19.RDS（阿里云）](#19rds阿里云)
@@ -2793,15 +2813,2075 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   log-slave-updates=1                 --强制刷新从库二进制日志。应用场景：1.高可用(MHA) 2.级联复制的中间库。
   ```
 
+- GTID复制配置过程  
+  - 清理环境  
 
+    ```shell
+    # 准备三台虚拟机，都执行以下命令
+    pkill mysqld
+    \rm -rf /data/*
+    mkdir -p /data/mysql/data
+    mkdir -p /data/binlog
+    chown -R mysql.mysql /data
+    ```
+
+  - 准备配置文件  
+
+    ```shell
+    # 主库db01：
+    cat > /etc/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql/
+    datadir=/data/mysql/data
+    socket=/tmp/mysql.sock
+    server_id=51
+    port=3306
+    secure-file-priv=/tmp
+    autocommit=0
+    log_bin=/data/binlog/mysql-bin
+    binlog_format=row
+    gtid-mode=on
+    enforce-gtid-consistency=true
+    log-slave-updates=1
+    [mysql]
+    prompt=db01 [\\d]>
+    EOF
+
+    # slave1(db02)：
+    cat > /etc/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql
+    datadir=/data/mysql/data
+    socket=/tmp/mysql.sock
+    server_id=52
+    port=3306
+    secure-file-priv=/tmp
+    autocommit=0
+    log_bin=/data/binlog/mysql-bin
+    binlog_format=row
+    gtid-mode=on
+    enforce-gtid-consistency=true
+    log-slave-updates=1
+    [mysql]
+    prompt=db02 [\\d]>
+    EOF
+
+    # slave2(db03)：
+    cat > /etc/my.cnf <<EOF
+    [mysqld]
+    basedir=/application/mysql
+    datadir=/data/mysql/data
+    socket=/tmp/mysql.sock
+    server_id=53
+    port=3306
+    secure-file-priv=/tmp
+    autocommit=0
+    log_bin=/data/binlog/mysql-bin
+    binlog_format=row
+    gtid-mode=on
+    enforce-gtid-consistency=true
+    log-slave-updates=1
+    [mysql]
+    prompt=db03 [\\d]>
+    EOF
+    ```
+
+  - 初始化数据（所有节点）  
+
+    ```shell
+    mysqld --initialize-insecure --user=mysql --basedir=/application/mysql  --datadir=/data/mysql/data
+    ```
+
+  - 启动数据库  
+    `/etc/init.d/mysqld start`
+
+  - 构建主从  
+
+    ```sql
+    -- 主从id
+    -- master:51
+    -- slave:52,53
+
+    -- 在主库上创建复制用户
+    grant replication slave  on *.* to repl@'192.168.56.%' identified by '123';
+
+    -- 在两个从库中配置主库信息
+    change master to 
+    master_host='192.168.56.112',
+    master_user='repl',
+    master_password='123' ,
+    MASTER_AUTO_POSITION=1;
+
+    -- 开启线程
+    start slave;
+    ```
+
+    可以写成到脚本中，例如：  
+
+    ```shell
+    mysql -e "change master to master_host='192.168.56.112',master_user='repl',master_password='123',MASTER_AUTO_POSITION=1;"
+    mysql -e "start slave;"
+    # 检查状态
+    mysql -e "show slave status\G" | grep YES
+    ```
+
+- GTID复制和普通复制的区别
+
+  ```txt
+  （0）在主从复制环境中，主库发生过的事务，在全局都是由唯一GTID记录的，更方便Failover
+  （1）额外功能参数（3个）
+  （2）change master to 的时候不再需要binlog 文件名和position号,只需要配置MASTER_AUTO_POSITION=1;
+  （3）在复制过程中，从库不再依赖master.info文件，而是直接读取最后一个relaylog的 GTID号
+  （4）mysqldump备份时，默认会将备份中包含的事务操作，以以下方式：
+      SET @@GLOBAL.GTID_PURGED='8c49d7ec-7e78-11e8-9638-000c29ca725d:1';
+      告诉从库，我的备份中已经有以上事务，你就不用运行了，直接从下一个GTID开始请求binlog就行。
+  ```
 
 ## 14.传统的高可用及读写分离（MHA&Atlas） ##
 
+### 高可用MHA ###
+
+- MHA环境部署  
+  - 准备环境（1主2从GTID）  
+    见上面GTID复制。  
+  - 配置关键程序软连接  
+
+    ```shell
+    # 三台机器都要做
+    ln -s /application/mysql/bin/mysqlbinlog    /usr/bin/mysqlbinlog
+    ln -s /application/mysql/bin/mysql          /usr/bin/mysql
+    ```
+
+  - 配置各节点互信  
+
+    ```shell
+    # 主库db01
+    rm -rf /root/.ssh
+    # 生成秘钥对
+    ssh-keygen
+    cd /root/.ssh
+    # 将公钥录入 authorized_keys
+    mv id_rsa.pub authorized_keys
+    scp  -r  /root/.ssh  192.168.56.113:/root 
+    scp  -r  /root/.ssh  192.168.56.114:/root 
+    # 在各节点进行验证
+    # db01:
+    ssh 192.168.56.112 date
+    ssh 192.168.56.113 date
+    ssh 192.168.56.114 date
+    # db02:
+    ssh 192.168.56.112 date
+    ssh 192.168.56.113 date
+    ssh 192.168.56.114 date
+    # db03:
+    ssh 192.168.56.112 date
+    ssh 192.168.56.113 date
+    ssh 192.168.56.114 date
+    ```
+
+  - 安装软件  
+    MHA下载地址：  
+    mha官网：<https://code.google.com/archive/p/mysql-master-ha/>  
+    github下载地址：<https://github.com/yoshinorim/mha4mysql-manager/wiki/Downloads>  
+
+  - 所有节点安装MHA  
+
+    ```shell
+    # 先按照依赖包
+    yum install perl-DBD-MySQL -y
+    rpm -ivh mha4mysql-node-0.56-0.el6.noarch.rpm
+    ```
+
+  - 在db01主库中创建mha需要的用户  
+
+    ```sql
+    grant all privileges on *.* to mha@'192.168.56.%' identified by 'mha';
+    ```
+
+  - Manager软件安装（从库db03）  
+
+    ```shell
+    # 先安装依赖包
+    yum install -y perl-Config-Tiny epel-release perl-Log-Dispatch perl-Parallel-ForkManager perl-Time-HiRes
+    rpm -ivh mha4mysql-manager-0.56-0.el6.noarch.rpm
+    ```
+
+  - 配置文件准备(从库db03)  
+
+    ```shell
+    # 创建配置文件目录
+    mkdir -p /etc/mha
+    # 创建日志目录
+    mkdir -p /var/log/mha/app1
+    # 编辑mha配置文件
+    cat > /etc/mha/app1.cnf<<EOF
+    [server default]
+    manager_log=/var/log/mha/app1/manager
+    manager_workdir=/var/log/mha/app1
+    master_binlog_dir=/data/binlog
+    user=mha
+    password=mha
+    ping_interval=2
+    repl_password=123
+    repl_user=repl
+    ssh_user=root
+    [server1]
+    hostname=192.168.56.112
+    port=3306
+    [server2]
+    hostname=192.168.56.113
+    port=3306
+    [server3]
+    hostname=192.168.56.114
+    port=3306
+    EOF
+    ```
+
+  - 状态检查  
+
+    ```shell
+    # 互信检查
+    masterha_check_ssh  --conf=/etc/mha/app1.cnf
+    # 最后显示以下信息表示都成功
+    # All SSH connection tests passed successfully.
+
+    # 主从状态检查
+    masterha_check_repl  --conf=/etc/mha/app1.cnf
+    ```
+
+- 开启MHA(从库db03)  
+
+  ```shell
+  nohup masterha_manager --conf=/etc/mha/app1.cnf --remove_dead_master_conf --ignore_last_failover  < /dev/null> /var/log/mha/app1/manager.log 2>&1 &
+  ```
+
+- 查看MHA状态(从库db03)  
+
+  ```shell
+  [root@db03 ~]# masterha_check_status --conf=/etc/mha/app1.cnf
+  app1 (pid:4719) is running(0:PING_OK), master:10.0.0.51
+  ```
+
+### 主从复制架构演变 ###
+
+- 基础主从(不依赖于其他任何软件)  
+  - 一主一从  
+  - 一主多从  
+  - 级联主从  
+以上架构在大部分中小型企业中还在用，还有一部分用了RDS。  
+  - 双主(互为主从)  
+    中型企业，在高可用架构(MMM)或分布式架构(Mycat,DBLE)中。  
+  - 环状(几乎无人用)  
+  - 多主一从(几乎无人用)  
+- 高性能架构-读写分离架构  
+  主流的读写分离中间件：  
+  MySQL ----> mysql-proxy 到0.8版本就停了  
+  360 ----> Atlas/Atlas-sharding 轻量化，2016年就停了  
+  MySQL ---> mysql-router  
+  Percona ----> ProxySQL  
+  Mariadb ----> Maxscale  
+- 高可用架构  
+  - 企业高可用性标准（全年无故障率）  
+    99% ---------> 故障小时 87.6小时  
+    99.9% -------> 8.76小时 ------> 互联网级别  
+    99.99% ------> 0.876小时 -----> 准金融级别  
+    99.999% -----> 0.0876小时 ----> 金融级别  
+    99.9999% ----> 0.00876小时 ---> 0宕机  
+  - 高可用架构产品  
+    负载均衡 ---------> Lvs,E5,nginx 有一定的高可用能力  
+    主备系统(单活) ---> KA,HA(roseHA,RHCS,PowerHA),mc_sg,MHA,MMM 可以保证3个9到4个9的可用级别  
+    多活系统 ---------> PXC,MGC,MySQL Cluster(收费),InnoDB Cluster(建议8.0版本以后使用)  
+- 分布式架构（大趋势）  
+  Mycat 1.65  
+  DBLE(Mycat的升级)  
+- NeWSQL  
+  RDBMS+NoSQL+分布式 ---> TiDB,巨杉,PolarDB,OceanBase  
+
+### MHA架构模型 ###
+
+- 架构介绍  
+  一主两从  
+  Manager软件：选择一个从节点安装  
+  Node软件：所有节点都要安装  
+- MHA软件构成  
+
+  ```txt
+  Manager工具包主要包括以下几个工具(perl脚本)：
+  masterha_manger             启动MHA 
+  masterha_check_ssh          检查MHA的SSH配置状况 
+  masterha_check_repl         检查MySQL复制状况 
+  masterha_master_monitor     检测master是否宕机 
+  masterha_check_status       检测当前MHA运行状态 
+  masterha_master_switch      控制故障转移（自动或者手动）
+  masterha_conf_host          添加或删除配置的server信息
+
+  Node工具包主要包括以下几个工具(perl脚本)：
+  这些工具通常由MHA Manager的脚本触发，无需人为操作
+  save_binary_logs            保存和复制master的二进制日志 
+  apply_diff_relay_logs       识别差异的中继日志事件并将其差异的事件应用于其他的
+  purge_relay_logs            清除中继日志（不会阻塞SQL线程）
+  ```
+
+![MHA架构图](mha.png)
+
+### MHA工作过程 ###
+
+- manager启动  
+  - 读取 --conf=/etc/mha/app1.cnf配置文件  
+  - 获取到node节点相关信息(一主两从)  
+  - 调用 masterha_check_ssh 脚本,使用 ssh_user=root 进行互信检查  
+  - 调用 masterha_check_repl 脚本，检查主从复制情况  
+  - manager启动成功  
+  - 通过 masterha_master_monitor 脚本，以 ping_interval=2 为间隔，持续监控主库的状态  
+    网络，主机，数据库状态(mysqladmin ping 命令)
+  - 当manager监控到master宕机  
+  - 开始选主过程  
+    1.判断参数配置是否有《强制主》参数。  
+    2.判断两个从库谁更新。  
+    3.按照配置文件书写顺序。  
+  - 判断主库SSH的连通性  
+    连通的话：则s1和s2立即保存(save_binary_logs)缺失部分的binlog到本地。  
+    不能连通：  
+    1.在传统模式下：调用 apply_diff_relay_logs 计算s1和s2的 relay-log 的差异，需要通过内容进行复杂的对比。  
+    2.在GTID模式下：同样进行计算差异，但只需要对比GTID号即可，效率较高。  
+    最后进行数据补偿。  
+  - 解除s1的从库身份  
+  - s2和s1构建新的主从关系  
+  - 移除配置文件中的故障节点  
+  - manager工作完成，结束进程。(一次性的高可用)  
+
+- 额外的功能  
+  - 提供了binlog server  
+  - 应用透明(VIP)  
+  - 实时通知管理员(send_report)  
+  - 自愈（待开发。。。）  
+
+- Manager额外参数介绍  
+  主库宕机谁来接管？  
+  1. 所有从节点日志都是一致的，默认会以配置文件的顺序去选择一个新主。  
+  2. 从节点日志不一致，自动选择最接近于主库的从库  
+  3. 如果对于某节点设定了权重(candidate_master=1)，权重节点会优先选择。  
+  但是此节点日志量落后主库100M日志的话，也不会被选择。可以配合check_repl_delay=0，关闭日志量的检查，强制选择候选节点。  
+
+  (1)ping_interval=1  
+  >设置监控主库，发送ping包的时间间隔，尝试三次没有回应的时候自动进行failover  
+
+  (2)candidate_master=1  
+  >设置为候选master，如果设置该参数以后，发生主从切换以后将会将此从库提升为主库，即使这个主库不是集群中事件最新的slave  
+
+  (3)check_repl_delay=0  
+  >默认情况下如果一个slave落后master 100M的relay logs的话，MHA将不会选择该slave作为一个新的master  
+  >因为对于这个slave的恢复需要花费很长时间，通过设置check_repl_delay=0,MHA触发切换在选择一个新的master的时候将会忽略复制延时，这个参数对于设置了candidate_master=1的主机非常有用，因为这个候选主在切换的过程中一定是新的master  
+
+### MHA故障模拟及处理 ###
+
+- 故障模拟  
+  停掉db01 `/etc/init.d/mysqld stop`  
+
+  观察manager日志 `tail -f /var/log/mha/app1/manager` 末尾显示 successfully 才算正常切换成功。  
+
+- 检查MHA的运行状态  
+  `masterha_check_status --conf=/etc/mha/app1.cnf`  
+
+- 判断主节点  
+  直接的方法，看哪台MySQL没有从库状态，结合从库的MySQL指向的主库进行判断。  
+
+- 修复故障库  
+  1.实例宕掉，启动 `/etc/init.d/mysqld start`  
+  2.主机损坏，有可能数据也损坏了，需要进行备份恢复故障节点。  
+
+- 恢复主从结构  
+  可以通过manager日志拿到主库设置命令  
+
+  ```shell
+  [root@db03 ~]# grep -i 'change master to ' /var/log/mha/app1/manager
+  Tue Mar  2 20:53:46 2021 - [info]  All other slaves should start replication from here. Statement should be: CHANGE MASTER TO MASTER_HOST='192.168.56.113', MASTER_PORT=3306, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='xxx';
+  # 使用下面的语句在db01中设置新的主库信息
+  CHANGE MASTER TO MASTER_HOST='192.168.56.113', MASTER_PORT=3306, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';
+  # 启动从库线程
+  start slave;
+  ```
+
+- 检查vip  
+  `ip a`
+
+- 修改配置文件(db03)  
+
+  ```shell
+  vim /etc/mha/app1.cnf
+  # 将修复的服务器信息加回去，如下
+  [server1]
+  hostname=192.168.56.112
+  port=3306
+  ```
+
+- 启动前预检查  
+
+  ```shell
+  # 互信检查
+  masterha_check_ssh  --conf=/etc/mha/app1.cnf
+  # 最后显示以下信息表示都成功
+  # All SSH connection tests passed successfully.
+
+  # 主从状态检查
+  masterha_check_repl  --conf=/etc/mha/app1.cnf
+  ```
+
+- 再启动MHA(db03)  
+
+  ```shell
+  nohup masterha_manager --conf=/etc/mha/app1.cnf --remove_dead_master_conf --ignore_last_failover  < /dev/null> /var/log/mha/app1/manager.log 2>&1 &
+  ```
+
+### MHA的vip功能 ###
+
+- 修改脚本内容(master_ip_failover)  
+  需要从官方下载脚本，上传到manager机器的相应路径下  
+
+  ```shell
+  vim /usr/local/bin/master_ip_failover
+  # 修改以下代码，vip设为该网段空闲ip
+  my $vip = '192.168.56.159/24';
+  my $key = '1';
+  my $ssh_start_vip = "/sbin/ifconfig enp0s3:$key $vip";
+  my $ssh_stop_vip = "/sbin/ifconfig enp0s3:$key down";
+  ```
+
+- 更改manager配置  
+
+  ```shell
+  vi /etc/mha/app1.cnf
+  # 添加：
+  master_ip_failover_script=/usr/local/bin/master_ip_failover
+  # 如果在Windows下编辑过，需要格式化
+  # dos2unix /usr/local/bin/master_ip_failover
+  chmod +x /usr/local/bin/master_ip_failover
+  ```
+
+- 在主库上，手工生成第一个vip地址  
+  手工在主库上绑定vip，注意一定要和配置文件中的 enp0s3 一致，我的是 enp0s3:1(1是key指定的值)  
+  使用命令 `ifconfig enp0s3:1 192.168.56.159/24`  
+  如果绑定错了，使用命令 `ifconfig enp0s3:1 down` 撤销  
+
+- 重启mha  
+
+  ```shell
+  masterha_stop --conf=/etc/mha/app1.cnf
+  nohup masterha_manager --conf=/etc/mha/app1.cnf --remove_dead_master_conf --ignore_last_failover < /dev/null > /var/log/mha/app1/manager.log 2>&1 &
+  ```
+
+### MHA的邮件提醒 ###
+
+- 1. 参数：  
+  `report_script=/usr/local/bin/send_report`  
+- 2. 准备邮件脚本  
+  send_report  
+  (1)将发邮件的脚本 send_report.pl 模板修改以下变量为自己的，上传到/usr/local/bin/中，并赋予执行权限。  
+
+  ```perl
+  my $smtp='smtp.163.com';
+  my $mail_from='from@163.com';
+  my $mail_user='from@163.com';
+  my $mail_pass='password';
+  #my $mail_to=['to1@qq.com','to2@qq.com'];
+  my $mail_to='to@qq.com';
+  ```
+
+  如果在Windows中编辑过，可能需要格式化 `sed -i ‘s/\r$//’ send_report`  
+
+  (2)将准备好的脚本添加到mha配置文件中,让其调用。  
+
+  ```shell
+  vim /etc/mha/app1.cnf
+  report_script=/usr/local/bin/send_report
+  ```
+
+- 3. 停止MHA  
+  `masterha_stop --conf=/etc/mha/app1.cnf`  
+- 4. 开启MHA  
+  `nohup masterha_manager --conf=/etc/mha/app1.cnf --remove_dead_master_conf --ignore_last_failover < /dev/null > /var/log/mha/app1/manager.log 2>&1 &`  
+
+- 5. 关闭主库,看警告邮件  
+
+### Binlog Server ###
+
+选择一个专门保存主库 binlog 的服务器，必须要有mysqlbinlog命令，这里选择db03  
+
+- 配置binlog server信息  
+
+  ```shell
+  # 编辑manager的配置文件
+  vim /etc/mha/app1.cnf
+  # 添加以下信息
+  [binlog]
+  no_master=1
+  hostname=192.168.56.114
+  master_binlog_dir=/data/mysql/binlog
+  ```
+
+- 创建 binlog 目录  
+
+  ```shell
+  # 创建binlog的存储目录，要与服务器上mysql的目录不一样
+  mkdir -p /data/mysql/binlog
+  chown -R mysql.mysql /data/*
+  ```
+
+- 拉取主库的binlog日志  
+  修改完之后，将主库的binlog拉取过来，从000001开始，之后的binlog会自动按顺序过来。  
+
+  ```shell
+  # 进入到创建的目录
+  cd /data/mysql/binlog
+  mysqlbinlog -R --host=192.168.56.113 --user=mha --password=mha --raw --stop-never mysql-bin.000001 &
+  ```
+
+  >注意，新库（测试）可以从第一个日志文件开始，生产中需要根据从库目前从库已经获取到的二进制日志点为起点。  
+
+### MySQL读写分离Atlas ###
+
+- Atlas介绍  
+  Atlas是由 Qihoo 360, Web平台部基础架构团队开发维护的一个基于MySQL协议的数据中间层项目。  
+  它是在mysql-proxy 0.8.2版本的基础上，对其进行了优化，增加了一些新的功能特性。  
+  360内部使用Atlas运行的mysql业务，每天承载的读写请求数达几十亿条。  
+  下载地址：<https://github.com/Qihoo360/Atlas/releases>  
+
+  >注意：  
+  >1、Atlas只能安装运行在64位的系统上  
+  >2、Centos 5.X安装 Atlas-XX.el5.x86_64.rpm，Centos 6.X安装Atlas-XX.el6.x86_64.rpm  
+  >3、后端mysql版本应大于5.1，建议使用Mysql 5.6以上  
+
+![atlas](atlas.png)
+
+- 安装配置  
+
+  ```shell
+  # yum install -y Atlas*
+  # 安装准备好的RPM包
+  rpm -ivh Atlas-2.2.1.el6.x86_64.rpm
+  # 到配置文件路径
+  cd /usr/local/mysql-proxy/conf
+  # 将默认配置备份
+  mv test.cnf test.cnf.bak
+  # 写新的配置文件
+  vim test.cnf
+  # 配置文件内容
+  [mysql-proxy]
+  admin-username = user
+  admin-password = pwd
+  proxy-backend-addresses = 192.168.56.159:3306
+  proxy-read-only-backend-addresses = 192.168.56.112:3306,192.168.56.114:3306
+  pwds = repl:3yb5jEku5h4=,mha:O2jBXONX098=
+  daemon = true
+  keepalive = true
+  event-threads = 8
+  log-level = message
+  log-path = /usr/local/mysql-proxy/log
+  sql-log=ON
+  proxy-address = 0.0.0.0:33060
+  admin-address = 0.0.0.0:2345
+  charset=utf8
+
+  # 启动atlas
+  /usr/local/mysql-proxy/bin/mysql-proxyd test start
+  # 查看进程
+  ps -ef |grep proxy
+  ```
+
+  >proxy-backend-addresses 写节点，配置为vip地址  
+  >pwds 生产上一般填管理员用户和应用端用户  
+
+- 功能测试  
+
+  ```sql
+  -- 测试读操作：
+  -- 连接altas
+  -- mysql -umha -pmha  -h 192.168.56.114 -P 33060
+  select @@server_id;
+  -- 测试写操作：
+  begin;select @@server_id;commit;
+  ```
+
+- 生产用户需求  
+
+  ```txt
+  生产环境：Atlas+MHA+VIP+Sent_Report_BinlogServer
+  需求：开发人员申请一个应用用户 app(select  update  insert)  密码123456,要通过10网段登录
+  1.在主库中,创建用户
+  grant select,update,insert on *.* to app@'10.0.0.%' identified by '123456';
+  2.在各节点中查看是否有了该用户
+  3.制作加密密码
+  /usr/local/mysql-proxy/bin/encrypt  123456
+  4.在atlasd的配置文件中添加生产用户
+  vim /usr/local/mysql-proxy/conf/test.cnf
+  pwds = repl:3yb5jEku5h4=,mha:O2jBXONX098=,app:/iZxz+0GRoA=
+  5.重启 Atlas
+  /usr/local/mysql-proxy/bin/mysql-proxyd test restart
+  6.测试连接
+  mysql -uapp -p123456 -h 192.168.56.114 -P 33060
+  ```
+
+### Atlas基本管理 ###
+
+- 连接管理接口  
+  `mysql -uuser -ppwd -h192.168.56.114 -P2345`  
+
+- 打印帮助  
+  `select * from help;`  
+
+- 查看所有节点  
+  `SELECT * FROM backends;`  
+
+- 动态上下线节点  
+  `set offline/online 3;`  
+
+- 动态添加删除节点  
+  `REMOVE BACKEND 3;`  
+
+- 动态添加节点  
+  `ADD SLAVE 10.0.0.53:3306;`  
+
+- 保存配置到配置文件  
+  `SAVE CONFIG;`  
+
+### 其他读写分离产品扩展 ###
+
+|读写分离产品|所有者|
+|:-|:-|
+|MySQL-Router|MySQL官方|
+|ProxySQL|Percona|
+|Maxscale|MariaDB|
+
 ## 15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS） ##
+
+### MyCAT基础架构图 ###
+
+![mycat](mycat.png)
+
+### MyCAT基础架构准备 ###
+
+- 环境准备：  
+  两台虚拟机 db01 db02
+  每台创建四个mysql实例：3307 3308 3309 3310
+
+- 删除历史环境：  
+
+  ```shell
+  pkill mysqld
+  rm -rf /data/330* 
+  mv /etc/my.cnf /etc/my.cnf.bak
+  ```
+
+- 创建相关目录初始化数据
+
+  ```shell
+  mkdir /data/33{07..10}/data -p
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3307/data --basedir=/app/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3308/data --basedir=/app/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3309/data --basedir=/app/mysql
+  mysqld --initialize-insecure  --user=mysql --datadir=/data/3310/data --basedir=/app/mysql
+  ```
+
+- 准备配置文件和启动脚本
+
+  ```shell
+  # ========db01==============
+  cat >/data/3307/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3307/data
+  socket=/data/3307/mysql.sock
+  port=3307
+  log-error=/data/3307/mysql.log
+  log_bin=/data/3307/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=7
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+
+  cat >/data/3308/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3308/data
+  port=3308
+  socket=/data/3308/mysql.sock
+  log-error=/data/3308/mysql.log
+  log_bin=/data/3308/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=8
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+
+  cat >/data/3309/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3309/data
+  socket=/data/3309/mysql.sock
+  port=3309
+  log-error=/data/3309/mysql.log
+  log_bin=/data/3309/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=9
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+  cat >/data/3310/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3310/data
+  socket=/data/3310/mysql.sock
+  port=3310
+  log-error=/data/3310/mysql.log
+  log_bin=/data/3310/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=10
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+
+  cat >/etc/systemd/system/mysqld3307.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3307/my.cnf
+  LimitNOFILE = 5000
+  EOF
+
+  cat >/etc/systemd/system/mysqld3308.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3308/my.cnf
+  LimitNOFILE = 5000
+  EOF
+
+  cat >/etc/systemd/system/mysqld3309.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3309/my.cnf
+  LimitNOFILE = 5000
+  EOF
+  cat >/etc/systemd/system/mysqld3310.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3310/my.cnf
+  LimitNOFILE = 5000
+  EOF
+  # ========db02===============
+  cat >/data/3307/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3307/data
+  socket=/data/3307/mysql.sock
+  port=3307
+  log-error=/data/3307/mysql.log
+  log_bin=/data/3307/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=17
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+  cat >/data/3308/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3308/data
+  port=3308
+  socket=/data/3308/mysql.sock
+  log-error=/data/3308/mysql.log
+  log_bin=/data/3308/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=18
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+  cat >/data/3309/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3309/data
+  socket=/data/3309/mysql.sock
+  port=3309
+  log-error=/data/3309/mysql.log
+  log_bin=/data/3309/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=19
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+
+
+  cat >/data/3310/my.cnf<<EOF
+  [mysqld]
+  basedir=/app/mysql
+  datadir=/data/3310/data
+  socket=/data/3310/mysql.sock
+  port=3310
+  log-error=/data/3310/mysql.log
+  log_bin=/data/3310/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server-id=20
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  EOF
+
+  cat >/etc/systemd/system/mysqld3307.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3307/my.cnf
+  LimitNOFILE = 5000
+  EOF
+
+  cat >/etc/systemd/system/mysqld3308.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3308/my.cnf
+  LimitNOFILE = 5000
+  EOF
+
+  cat >/etc/systemd/system/mysqld3309.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3309/my.cnf
+  LimitNOFILE = 5000
+  EOF
+  cat >/etc/systemd/system/mysqld3310.service<<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(8)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/app/mysql/bin/mysqld --defaults-file=/data/3310/my.cnf
+  LimitNOFILE = 5000
+  EOF
+  ```
+
+- 修改权限，启动多实例  
+
+  ```shell
+  chown -R mysql.mysql /data/*
+
+  systemctl start mysqld3307
+  systemctl start mysqld3308
+  systemctl start mysqld3309
+  systemctl start mysqld3310
+
+  mysql -S /data/3307/mysql.sock -e "show variables like 'server_id'"
+  mysql -S /data/3308/mysql.sock -e "show variables like 'server_id'"
+  mysql -S /data/3309/mysql.sock -e "show variables like 'server_id'"
+  mysql -S /data/3310/mysql.sock -e "show variables like 'server_id'"
+  ```
+
+- 节点主从规划  
+  箭头指向谁是主库  
+
+  ```txt
+  10.0.0.51:3307  <----->  10.0.0.52:3307
+  10.0.0.51:3309  ------>  10.0.0.51:3307
+  10.0.0.52:3309  ------>  10.0.0.52:3307
+  
+  10.0.0.52:3308  <---->   10.0.0.51:3308
+  10.0.0.52:3310  ----->   10.0.0.52:3308
+  10.0.0.51:3310  ----->   10.0.0.51:3308
+  ```
+
+- 分片规划  
+
+  ```txt
+  shard1：
+      Master：10.0.0.51:3307
+      slave1：10.0.0.51:3309
+      Standby Master：10.0.0.52:3307
+      slave2：10.0.0.52:3309
+  shard2：
+      Master：10.0.0.52:3308
+      slave1：10.0.0.52:3310
+      Standby Master：10.0.0.51:3308
+      slave2：10.0.0.51:3310
+  ```
+
+- 开始配置  
+
+  ```shell
+  # shard1
+  # 10.0.0.51:3307 <-----> 10.0.0.52:3307
+  # db02
+  mysql  -S /data/3307/mysql.sock -e "grant replication slave on *.* to repl@'10.0.0.%' identified by '123';"
+  mysql  -S /data/3307/mysql.sock -e "grant all  on *.* to root@'10.0.0.%' identified by '123'  with grant option;"
+  # db01
+  mysql  -S /data/3307/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.52', MASTER_PORT=3307, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3307/mysql.sock -e "start slave;"
+  mysql  -S /data/3307/mysql.sock -e "show slave status\G"
+  # db02
+  mysql  -S /data/3307/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.51', MASTER_PORT=3307, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3307/mysql.sock -e "start slave;"
+  mysql  -S /data/3307/mysql.sock -e "show slave status\G"
+  # 10.0.0.51:3309 ------> 10.0.0.51:3307
+  # db01
+  mysql  -S /data/3309/mysql.sock  -e "CHANGE MASTER TO MASTER_HOST='10.0.0.51', MASTER_PORT=3307, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3309/mysql.sock  -e "start slave;"
+  mysql  -S /data/3309/mysql.sock  -e "show slave status\G"
+  # 10.0.0.52:3309 ------> 10.0.0.52:3307
+  # db02
+  mysql  -S /data/3309/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.52', MASTER_PORT=3307, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3309/mysql.sock -e "start slave;"
+  mysql  -S /data/3309/mysql.sock -e "show slave status\G"
+  # shard2
+  #10.0.0.52:3308 <-----> 10.0.0.51:3308
+  # db01
+  mysql  -S /data/3308/mysql.sock -e "grant replication slave on *.* to repl@'10.0.0.%' identified by '123';"
+  mysql  -S /data/3308/mysql.sock -e "grant all  on *.* to root@'10.0.0.%' identified by '123'  with grant option;"
+  # db02
+  mysql  -S /data/3308/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.51', MASTER_PORT=3308, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3308/mysql.sock -e "start slave;"
+  mysql  -S /data/3308/mysql.sock -e "show slave status\G"
+  # db01
+  mysql  -S /data/3308/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.52', MASTER_PORT=3308, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3308/mysql.sock -e "start slave;"
+  mysql  -S /data/3308/mysql.sock -e "show slave status\G"
+  # 10.0.0.52:3310 -----> 10.0.0.52:3308
+  # db02
+  mysql  -S /data/3310/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.52', MASTER_PORT=3308, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3310/mysql.sock -e "start slave;"
+  mysql  -S /data/3310/mysql.sock -e "show slave status\G"
+  # 10.0.0.51:3310 -----> 10.0.0.51:3308
+  # db01
+  mysql  -S /data/3310/mysql.sock -e "CHANGE MASTER TO MASTER_HOST='10.0.0.51', MASTER_PORT=3308, MASTER_AUTO_POSITION=1, MASTER_USER='repl', MASTER_PASSWORD='123';"
+  mysql  -S /data/3310/mysql.sock -e "start slave;"
+  mysql  -S /data/3310/mysql.sock -e "show slave status\G"
+  ```
+
+- 检测主从状态  
+
+  ```shell
+  mysql -S /data/3307/mysql.sock -e "show slave status\G"|grep Yes
+  mysql -S /data/3308/mysql.sock -e "show slave status\G"|grep Yes
+  mysql -S /data/3309/mysql.sock -e "show slave status\G"|grep Yes
+  mysql -S /data/3310/mysql.sock -e "show slave status\G"|grep Yes
+  ```
+
+  >注：如果中间出现错误，在每个节点进行执行以下命令  
+
+  ```shell
+  mysql -S /data/3307/mysql.sock -e "stop slave; reset slave all;"
+  mysql -S /data/3308/mysql.sock -e "stop slave; reset slave all;"
+  mysql -S /data/3309/mysql.sock -e "stop slave; reset slave all;"
+  mysql -S /data/3310/mysql.sock -e "stop slave; reset slave all;"
+  ```
+
+### MySQL分布式架构介绍 ###
+
+![分布式架构](fbs.png)
+
+1. schema拆分及业务分库  
+2. 垂直拆分-分库分表  
+3. 水平拆分-分片  
+
+- 企业代表产品
+
+  ```txt
+  360 Atlas-Sharding
+  Alibaba  cobar 
+  Mycat
+  TDDL
+  Heisenberg
+  Oceanus
+  Vitess
+  OneProxy 
+  DRDS
+  ```
+
+### MyCAT安装和配置 ###
+
+- 安装  
+  - 预先安装Java运行环境  
+    参考 hadoop/在centos7上安装hadoop和hive/安装Java环境  
+  - 下载  
+    文件: Mycat-server-xxxxx.linux.tar.gz  
+    官网地址: <http://www.mycat.org.cn>  
+  - 解压文件  
+    `tar xf Mycat-server-1.6.5-release-20180122220033-linux.tar.gz`  
+  - 软件目录结构  
+
+    ```shell
+    ls
+    bin  catlet  conf  lib  logs  version.txt
+    ```
+
+  - 启动和连接  
+
+    ```shell
+    # 配置环境变量
+    vim /etc/profile
+    export PATH=/application/mycat/bin:$PATH
+    source /etc/profile
+    # 启动
+    mycat start
+    # 连接mycat：
+    mysql -uroot -p123456 -h 127.0.0.1 -P8066
+    ```
+
+- 配置文件介绍  
+
+  ```txt
+  logs目录:
+  wrapper.log       ---->mycat启动日志
+  mycat.log         ---->mycat详细工作日志
+  conf目录:
+  schema.xml      
+  主配置文件（读写分离、高可用、分布式策略定制、节点控制）
+  server.xml
+  mycat软件本身相关的配置
+  rule.xml 
+  分片规则配置文件,记录分片规则列表、使用方法等
+  ```
+
+- 应用前环境准备  
+  - 用户创建及数据库导入  
+
+    ```shell
+    # db01:
+    mysql -S /data/3307/mysql.sock 
+    grant all on *.* to root@'10.0.0.%' identified by '123';
+    source /root/world.sql
+    
+    mysql -S /data/3308/mysql.sock 
+    grant all on *.* to root@'10.0.0.%' identified by '123';
+    source /root/world.sql
+    ```
+
+  - 配置文件处理  
+
+    ```shell
+    cd /application/mycat/conf
+    mv schema.xml schema.xml.bak
+    vim schema.xml 
+    <?xml version="1.0"?>  
+    <!DOCTYPE mycat:schema SYSTEM "schema.dtd">  
+    <mycat:schema xmlns:mycat="http://io.mycat/">
+    <schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="dn1"> 
+    </schema>  
+        <dataNode name="dn1" dataHost="localhost1" database= "wordpress" />  
+        <dataHost name="localhost1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1"> 
+            <heartbeat>select user()</heartbeat>  
+        <writeHost host="db1" url="10.0.0.51:3307" user="root" password="123"> 
+                <readHost host="db2" url="10.0.0.51:3309" user="root" password="123" /> 
+        </writeHost> 
+        </dataHost>  
+    </mycat:schema>
+    ```
+
+- 配置文件简单介绍  
+  - 逻辑库：schema
+    `<schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="dn1"> </schema>`  
+
+  - 数据节点:datanode  
+   `<dataNode name="dn1" dataHost="localhost1" database= "world" />`  
+
+  - 数据主机：datahost(w和r)  
+
+    ```xml
+    <dataHost name="localhost1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1"> 
+            <heartbeat>select user()</heartbeat>  
+        <writeHost host="db1" url="10.0.0.51:3307" user="root" password="123"> 
+                <readHost host="db2" url="10.0.0.52:3309" user="root" password="123" /> 
+        </writeHost> 
+        </dataHost>  
+    ```
+
+- 读写分离结构配置  
+  `vim schema.xml`  
+
+  ```xml
+  <?xml version="1.0"?>
+  <!DOCTYPE mycat:schema SYSTEM "schema.dtd">  
+  <mycat:schema xmlns:mycat="http://io.mycat/">
+  <schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="sh1"> 
+  </schema>  
+          <dataNode name="sh1" dataHost="oldguo1" database= "world" />         
+          <dataHost name="oldguo1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1">    
+                  <heartbeat>select user()</heartbeat>  
+          <writeHost host="db1" url="10.0.0.51:3307" user="root" password="123"> 
+                          <readHost host="db2" url="10.0.0.51:3309" user="root" password="123" /> 
+          </writeHost> 
+          </dataHost>  
+  </mycat:schema>
+  ```
+
+  重启mycat `mycat restart`  
+  读写分离测试  
+
+  ```shell
+  mysql -uroot -p -h 127.0.0.1 -P8066
+  show variables like 'server_id';
+  begin;
+  show variables like 'server_id';
+  ```
+
+  >总结：以上案例实现了1主1从的读写分离功能，写操作落到主库，读操作落到从库.如果主库宕机，从库不能在继续提供服务了。  
+
+- 配置读写分离及高可用  
+
+  ```shell
+  [root@db01 conf]# mv schema.xml schema.xml.rw
+  [root@db01 conf]# vim schema.xml
+  ```
+
+  ```xml
+  <?xml version="1.0"?>  
+  <!DOCTYPE mycat:schema SYSTEM "schema.dtd">  
+  <mycat:schema xmlns:mycat="http://io.mycat/">
+  <schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="sh1"> 
+  </schema>  
+      <dataNode name="sh1" dataHost="oldguo1" database= "world" />  
+      <dataHost name="oldguo1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1"> 
+          <heartbeat>select user()</heartbeat>  
+      <writeHost host="db1" url="10.0.0.51:3307" user="root" password="123"> 
+              <readHost host="db2" url="10.0.0.51:3309" user="root" password="123" /> 
+      </writeHost> 
+      <writeHost host="db3" url="10.0.0.52:3307" user="root" password="123"> 
+              <readHost host="db4" url="10.0.0.52:3309" user="root" password="123" /> 
+      </writeHost>        
+      </dataHost>  
+  </mycat:schema>
+  ```
+
+  >真正的 writehost：负责写操作的writehost  
+  >standby 的 writeHost  ：和readhost一样，只提供读服务  
+  >当写节点宕机后，后面跟的readhost也不提供服务，这时候 standby 的 writehost 就提供写服务，后面跟的readhost提供读服务  
+
+- 测试  
+
+  ```shell
+  mysql -uroot -p123456 -h 127.0.0.1 -P 8066
+  show variables like 'server_id';
+  ```
+
+  读写分离测试  
+
+  ```shell
+  mysql -uroot -p -h 127.0.0.1 -P8066
+  show variables like 'server_id';
+  show variables like 'server_id';
+  show variables like 'server_id';
+  begin;
+  show variables like 'server_id';
+  ```
+
+  >对db01 3307节点进行关闭和启动,测试读写操作  
+
+- 配置中的属性介绍  
+
+  ```txt
+  *balance属性
+  负载均衡类型，目前的取值有3种： 
+  1. balance="0", 不开启读写分离机制，所有读操作都发送到当前可用的writeHost上。 
+  2. balance="1"，全部的readHost与standby writeHost参与select语句的负载均衡，简单的说，
+    当双主双从模式(M1->S1，M2->S2，并且M1与 M2互为主备)，正常情况下，M2,S1,S2都参与select语句的负载均衡。 
+  3. balance="2"，所有读操作都随机的在writeHost、readhost上分发。
+  
+  *writeType属性
+  负载均衡类型，目前的取值有2种：
+  1. writeType="0", 所有写操作发送到配置的第一个writeHost，
+  第一个挂了切到还生存的第二个writeHost，重新启动后已切换后的为主，切换记录在配置文件中:dnindex.properties . 
+  2. writeType=“1”，所有写操作都随机的发送到配置的writeHost，但不推荐使用
+  
+  *switchType属性
+  -1 表示不自动切换 
+  1 默认值，自动切换 
+  2 基于MySQL主从同步的状态决定是否切换 ，心跳语句为 show slave status
+  
+  *datahost其他配置
+  
+  <dataHost name="localhost1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1"> 
+  
+  maxCon="1000"：最大的并发连接数
+  minCon="10" ：mycat在启动之后，会在后端节点上自动开启的连接线程
+  tempReadHostAvailable="1"
+  这个一主一从时（1个writehost，1个readhost时），可以开启这个参数，如果2个writehost，2个readhost时
+  <heartbeat>select user()</heartbeat>  监测心跳
+  ```
+
+- 垂直分表  
+
+  ```shell
+  # 备份
+  mv  schema.xml  schema.xml.ha 
+  # 编辑配置
+  vim schema.xml
+  ```
+
+  配置如下  
+
+  ```xml
+  <?xml version="1.0"?>
+  <!DOCTYPE mycat:schema SYSTEM "schema.dtd">
+  <mycat:schema xmlns:mycat="http://io.mycat/">
+  <schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="sh1">
+          <table name="user" dataNode="sh1"/>
+          <table name="order_t" dataNode="sh2"/>
+  </schema>
+      <dataNode name="sh1" dataHost="oldguo1" database= "taobao" />
+      <dataNode name="sh2" dataHost="oldguo2" database= "taobao" />
+      <dataHost name="oldguo1" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1">
+          <heartbeat>select user()</heartbeat>
+      <writeHost host="db1" url="10.0.0.51:3307" user="root" password="123">
+              <readHost host="db2" url="10.0.0.51:3309" user="root" password="123" />
+      </writeHost>
+      <writeHost host="db3" url="10.0.0.52:3307" user="root" password="123">
+              <readHost host="db4" url="10.0.0.52:3309" user="root" password="123" />
+      </writeHost>
+      </dataHost>
+      <dataHost name="oldguo2" maxCon="1000" minCon="10" balance="1"  writeType="0" dbType="mysql"  dbDriver="native" switchType="1">
+          <heartbeat>select user()</heartbeat>
+      <writeHost host="db1" url="10.0.0.51:3308" user="root" password="123">
+              <readHost host="db2" url="10.0.0.51:3310" user="root" password="123" />
+      </writeHost>
+      <writeHost host="db3" url="10.0.0.52:3308" user="root" password="123">
+              <readHost host="db4" url="10.0.0.52:3310" user="root" password="123" />
+      </writeHost>
+      </dataHost>
+  </mycat:schema>
+  ```
+
+  创建测试库和表  
+
+  ```shell
+  [root@db01 conf]# mysql -S /data/3307/mysql.sock -e "create database taobao charset utf8;"
+  [root@db01 conf]# mysql -S /data/3308/mysql.sock -e "create database taobao charset utf8;"
+  [root@db01 conf]# mysql -S /data/3307/mysql.sock -e "use taobao;create table user(id int,name varchar(20))";
+  [root@db01 conf]# mysql -S /data/3308/mysql.sock -e "use taobao;create table order_t(id int,name varchar(20))"
+  ```
+
+### MyCAT核心特性-分片(水平拆分) ###
+
+```txt
+分片：对一个"bigtable"，比如说t3表
+
+(1)行数非常多，800w
+(2)访问非常频繁
+
+分片的目的：
+（1）将大数据量进行分布存储
+（2）提供均衡的访问路由
+
+分片策略：
+范围 range  800w  1-400w 400w01-800w
+取模 mod    取余数
+枚举 
+哈希 hash 
+时间 流水
+
+优化关联查询
+全局表
+ER分片
+```
+
+- 范围分片  
+
+  ```txt
+  比如说t3表
+  (1)行数非常多，2000w（1-1000w:sh1   1000w01-2000w:sh2）
+  (2)访问非常频繁，用户访问较离散
+  mv schema.xml schema.xml.1  
+  vim schema.xml
+  <schema name="TESTDB" checkSQLschema="false" sqlMaxLimit="100" dataNode="sh1"> 
+          <table name="t3" dataNode="sh1,sh2" rule="auto-sharding-long" />
+  </schema>  
+      <dataNode name="sh1" dataHost="oldguo1" database= "taobao" /> 
+      <dataNode name="sh2" dataHost="oldguo2" database= "taobao" />  
+
+  vim rule.xml
+  <tableRule name="auto-sharding-long">
+                  <rule>
+                          <columns>id</columns>
+                          <algorithm>rang-long</algorithm>
+                  </rule>             
+  <function name="rang-long"
+      class="io.mycat.route.function.AutoPartitionByLong">
+      <property name="mapFile">autopartition-long.txt</property>
+  </function>
+  ===================================         
+  vim autopartition-long.txt
+  0-10=0
+  11-20=1
+
+  创建测试表：
+  mysql -S /data/3307/mysql.sock -e "use taobao;create table t3 (id int not null primary key auto_increment,name varchar(20) not null);"
+
+  mysql -S /data/3308/mysql.sock  -e "use taobao;create table t3 (id int not null primary key auto_increment,name varchar(20) not null);"
+
+  测试：
+  重启mycat
+  mycat restart
+  mysql -uroot -p123456 -h 127.0.0.1 -P 8066
+  insert into t3(id,name) values(1,'a');
+  insert into t3(id,name) values(2,'b');
+  insert into t3(id,name) values(3,'c');
+  insert into t3(id,name) values(4,'d');
+  insert into t3(id,name) values(11,'aa');
+  insert into t3(id,name) values(12,'bb');
+  insert into t3(id,name) values(13,'cc');
+  insert into t3(id,name) values(14,'dd');
+  ```
+
+- 取模分片（mod-long）  
+
+  ```txt
+  取余分片方式：分片键（一个列）与节点数量进行取余，得到余数，将数据写入对应节点
+  vim schema.xml
+  <table name="t4" dataNode="sh1,sh2" rule="mod-long" />
+  vim rule.xml
+  <property name="count">2</property>
+
+  准备测试环境
+      
+  创建测试表：
+  mysql -S /data/3307/mysql.sock -e "use taobao;create table t4 (id int not null primary key auto_increment,name varchar(20) not null);"
+  mysql -S /data/3308/mysql.sock -e "use taobao;create table t4 (id int not null primary key auto_increment,name varchar(20) not null);"
+
+  重启mycat 
+  mycat restart 
+
+  测试： 
+  mysql -uroot -p123456 -h10.0.0.52 -P8066
+
+  use TESTDB
+  insert into t4(id,name) values(1,'a');
+  insert into t4(id,name) values(2,'b');
+  insert into t4(id,name) values(3,'c');
+  insert into t4(id,name) values(4,'d');
+
+  分别登录后端节点查询数据
+  mysql -S /data/3307/mysql.sock 
+  use taobao
+  select * from t4;
+
+  mysql -S /data/3308/mysql.sock 
+  use taobao
+  select * from t4;
+  ```
+
+- 枚举分片  
+
+  ```txt
+  t5 表
+  id name telnum
+  1   bj   1212
+  2   sh   22222
+  3   bj   3333
+  4   sh   44444
+  5   bj   5555
+
+  sharding-by-intfile
+  vim schema.xml
+  <table name="t5" dataNode="sh1,sh2" rule="sharding-by-intfile" />
+
+  vim rule.xml
+  <tableRule name="sharding-by-intfile"> 
+  <rule> <columns>name</columns> 
+  <algorithm>hash-int</algorithm> 
+  </rule> 
+  </tableRule> 
+
+  <function name="hash-int" class="org.opencloudb.route.function.PartitionByFileMap"> 
+  <property name="mapFile">partition-hash-int.txt</property> 
+    <property name="type">1</property>
+                  <property name="defaultNode">0</property>
+  </function> 
+
+  partition-hash-int.txt 配置： 
+  bj=0 
+  sh=1
+  DEFAULT_NODE=1 
+  columns 标识将要分片的表字段，algorithm 分片函数， 其中分片函数配置中，mapFile标识配置文件名称
+
+  准备测试环境
+  mysql -S /data/3307/mysql.sock -e "use taobao;create table t5 (id int not null primary key auto_increment,name varchar(20) not null);"
+
+  mysql -S /data/3308/mysql.sock -e "use taobao;create table t5 (id int not null primary key auto_increment,name varchar(20) not null);"
+  重启mycat 
+  mycat restart 
+  mysql -uroot -p123456 -h10.0.0.51 -P8066
+  use TESTDB
+  insert into t5(id,name) values(1,'bj');
+  insert into t5(id,name) values(2,'sh');
+  insert into t5(id,name) values(3,'bj');
+  insert into t5(id,name) values(4,'sh');
+  insert into t5(id,name) values(5,'tj');
+  ```
+
+- Mycat全局表  
+
+  ```txt
+  a   b   c  d   
+  join 
+  t 
+
+  select  t1.name   ,t.x  from  t1 
+  join t 
+  select  t2.name   ,t.x  from  t2 
+  join t 
+  select  t3.name   ,t.x  from  t3 
+  join t 
+
+  使用场景：
+  如果你的业务中有些数据类似于数据字典，比如配置文件的配置，
+  常用业务的配置或者数据量不大很少变动的表，这些表往往不是特别大，
+  而且大部分的业务场景都会用到，那么这种表适合于Mycat全局表，无须对数据进行切分，
+  要在所有的分片上保存一份数据即可，Mycat 在Join操作中，业务表与全局表进行Join聚合会优先选择相同分片内的全局表join，
+  避免跨库Join，在进行数据插入操作时，mycat将把数据分发到全局表对应的所有分片执行，在进行数据读取时候将会随机获取一个节点读取数据。 
+
+  vim schema.xml 
+  <table name="t_area" primaryKey="id"  type="global" dataNode="sh1,sh2" /> 
+
+  后端数据准备
+  mysql -S /data/3307/mysql.sock 
+  use taobao
+  create table t_area (id int not null primary key auto_increment,name varchar(20) not null);
+
+  mysql -S /data/3308/mysql.sock 
+  use taobao
+  create table t_area  (id int not null primary key auto_increment,name varchar(20) not null);
+
+  重启mycat 
+  mycat restart 
+
+  测试： 
+  mysql -uroot -p123456 -h10.0.0.52 -P8066
+
+  use TESTDB
+  insert into t_area(id,name) values(1,'a');
+  insert into t_area(id,name) values(2,'b');
+  insert into t_area(id,name) values(3,'c');
+  insert into t_area(id,name) values(4,'d');
+  ```
+
+- E-R分片  
+
+  ```txt
+  A 
+  join 
+  B  
+  为了防止跨分片join，可以使用E-R模式
+  A   join   B
+  on  a.xx=b.yy
+  join C
+  on A.id=C.id
+  <table name="A" dataNode="sh1,sh2" rule="mod-long"> 
+        <childTable name="B" joinKey="yy" parentKey="xx" /> 
+  </table> 
+  ```
 
 ## 16.MySQL 5.7 高可用及分布式架构-扩展（MGR,InnoDB Cluster） ##
 
 ## 17.MySQL优化（安全，性能） ##
+
+### 优化哲学 ###
+
+- 为什么优化？  
+  为了获得成就感?  
+  为了证实比系统设计者更懂数据库?  
+  为了从优化成果来证实优化者更有价值?  
+
+- 优化风险  
+
+  ```txt
+  优化不总是对一个单纯的环境进行！还很可能是一个复杂的已投产的系统。
+  优化手段本来就有很大的风险，只不过你没能力意识到和预见到！
+  任何的技术可以解决一个问题，但必然存在带来一个问题的风险！
+  对于优化来说解决问题而带来的问题控制在可接受的范围内才是有成果。
+  保持现状或出现更差的情况都是失败！
+
+  稳定性和业务可持续性通常比性能更重要！
+  优化不可避免涉及到变更，变更就有风险！
+  优化使性能变好，维持和变差是等概率事件！
+  优化不能只是数据库管理员担当风险，但会所有的人分享优化成果！
+  所以优化工作是由业务需要驱使的！！！
+  ```
+
+- 谁参与优化  
+
+  ```txt
+  数据库管理员
+  业务部门代表
+  应用程序架构师
+  应用程序设计人员
+  应用程序开发人员
+  硬件及系统管理员
+  存储管理员
+  ```
+
+- 优化方向  
+  安全优化（业务持续性）  
+  性能优化（业务高效性）  
+
+- 优化的范围及思路  
+
+  ```txt
+  优化范围：
+  存储、主机和操作系统:
+      主机架构稳定性
+      I/O规划及配置
+      Swap
+      OS内核参数
+      网络问题
+  应用程序:（Index，lock，session）
+      应用程序稳定性和性能
+      SQL语句性能
+      串行访问资源
+      性能欠佳会话管理
+  数据库优化:（内存、数据库设计、参数）
+      内存
+      数据库结构(物理&逻辑)
+      实例配置
+  ```
+
+- 优化效果和成本的评估  
+
+  ![优化](beast.png)
+
+
+### 优化工具的使用 ###
+
+- 操作系统层面的优化工具介绍  
+  - top  
+
+    ```txt
+    cpu使用情况的平均值：
+    %Cpu(s): 10.1 us,  3.7 sy,  0.0 ni, 85.7 id,  0.0 wa,  0.5 hi,  0.0 si,  0.0 st
+
+    CPU每个核心的分别使用的情况（按1）：
+    %Cpu0  : 10.2 us,  6.9 sy,  0.0 ni, 82.5 id,  0.0 wa,  0.3 hi,  0.0 si,  0.0 st
+    %Cpu1  :  8.3 us,  2.6 sy,  0.0 ni, 89.1 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu2  : 14.0 us,  6.3 sy,  0.0 ni, 79.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu3  :  7.3 us,  2.3 sy,  0.0 ni, 90.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu4  : 15.6 us,  4.6 sy,  0.0 ni, 79.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu5  :  9.6 us,  1.3 sy,  0.0 ni, 89.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu6  : 13.9 us,  1.7 sy,  0.0 ni, 84.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+    %Cpu7  : 10.3 us,  2.3 sy,  0.0 ni, 87.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+
+    1.CPU 的指标，主要关注以下几个指标
+      (1).id  空闲的CPU时间片占比。
+      (2).wa  CPU用来等待的时间片占比，该指标高可能由以下情况导致：
+        a.等待IO 全表扫描
+        b.等待大的处理事件
+        c.锁
+      (3).us  用户程序工作所占用的时间片占比。
+      (4).sy  内核工作花费的CPU时间片占比，该指标高可能由以下情况导致：
+        a.bug 中病毒等
+        b.各种资源的调度和分配
+        c.高并发连接
+        d.锁
+
+    KiB Mem : 16701740 total,  6904880 free,  9567508 used,   229352 buff/cache
+    2.MEM 内存
+      (1)total :总内存大小
+      (2)free  ：空闲的
+      (3)used  ：在使用的
+      (4)buff/cache ：缓冲区 和 缓存
+
+    KiB Swap: 10370152 total,  9531288 free,   838864 used.  7000500 avail Mem
+    3.swap 缓冲
+    对于MySQL，当内存不够时我们倾向于进行内存回收而不是启用swap
+
+    Linux 6操作系统
+    默认回收策略（buffer cache），不立即回收策略。内存使用达到100%-60%时候，40% 会使用swap。
+    Linux 7操作系统
+    内存使用达到100%-30%（70%）时候，才会使用swap
+
+    查看内存剩余阈值，达到就启用swap
+    cat /proc/sys/vm/swappiness 
+    30
+    禁用swap，临时修改
+    echo 0 >/proc/sys/vm/swappiness
+
+    永久修改
+    vim /etc/sysctl.conf
+    添加:
+    vm.swappiness=0
+    sysctl -p 
+    ```
+
+  - iostat  
+    安装 `yum install -y sysstat`  
+
+    ```txt
+    IO压力测试
+    dd if=/dev/zero of=/tmp/bigfile bs=1M count=4096
+    
+    IO实时监控
+    iostat -dk 1
+
+    现象说明
+    1. IO 高 cpu us 也高,属于正常现象
+    2. CPU  us高  IO很低   MySQL 不在做增删改查,有可能是存储过程,函数,排序,分组,多表连接
+    3. Wait,SYS 高 ,IO低  IO出问题了,锁等待过多的几率比较大，需要结合数据库的情况进行判断
+    IOPS：每秒磁盘最多能够发生的IO次数，这是个定值 
+    频繁小事务,IOPS很高,达到阈值,可能IO吞吐量没超过IO最大吞吐量.无法新的IO了
+    存储规划有问题.
+    ```
+
+  - vmstat  
+    类似top 命令 `vmstat 1`  
+- 数据库优化工具  
+
+  ```txt
+  show status
+  show variables
+  show index
+  show processlist
+  show slave status
+  show engine innodb status
+  desc/explain
+  slowlog
+
+  --扩展类深度优化:
+  pt系列              (pt-query-digest,pt-osc,pt-index等)
+  mysqlslap           压力测试工具
+  sysbench            压力测试工具
+  information_schema  I_S 视图库
+  performance_schema  p_S 视图库
+  sys
+  ```
+
+### 优化思路分解 ###
+
+- 硬件优化  
+  - 主机  
+    真实的硬件（PC Server）: DELL  R系列 ，华为，浪潮，HP，联想  
+    云产品：ECS,数据库RDSDRDS,PolarDB  
+    IBM 小型机 P6  570  595   P7 720  750 780     P8  
+  - CPU根据数据库类型  
+    OLTP,OLAP  
+    IO密集型：线上系统，OLTP主要是IO密集型的业务，高并发  
+    CPU密集型：数据分析数据处理，OLAP，cpu密集型的，需要CPU高计算能力（i系列，IBM power系列）  
+    CPU密集型：I系列的，主频很高，核心少  
+    IO密集型：E系列（至强），主频相对低，核心数量多  
+  - 内存  
+    建议2-3倍cpu核心数量 （ECC）  
+  - 磁盘选择  
+    SATA-III   SAS    Fc    SSD（sata） pci-e  ssd  Flash  
+    主机 RAID卡的BBU(Battery Backup Unit)关闭(数据安全)  
+  - 存储  
+    根据存储数据种类的不同，选择不同的存储设备  
+    配置合理的RAID级别(raid5、raid10、热备盘)  
+    r0 :条带化 ,性能高  
+    r1 :镜像，安全  
+    r5 :校验+条带化，安全较高+性能较高（读），写性能较低 （适合于读多写少）  
+    r10：安全+性能都很高，最少四块盘，浪费一半的空间（高IO要求）  
+  - 网络  
+    1、硬件买好的（单卡单口）  
+    2、网卡绑定（bonding），交换机堆叠  
+    以上问题，提前规避掉。  
+
+- 操作系统优化  
+  - Swap调整  
+
+    ```txt
+    echo 0 >/proc/sys/vm/swappiness的内容改成0（临时），
+    /etc/sysctl.conf
+    上添加vm.swappiness=0（永久）
+    sysctl -p
+
+    这个参数决定了Linux是倾向于使用swap，还是倾向于释放文件系统cache。在内存紧张的情况下，数值越低越倾向于释放文件系统cache。
+    当然，这个参数只能减少使用swap的概率，并不能避免Linux使用swap。
+
+    修改MySQL的配置参数innodb_flush_method，开启O_DIRECT模式
+    这种情况下，InnoDB的buffer pool会直接绕过文件系统cache来访问磁盘，但是redo log依旧会使用文件系统cache。值得注意的是，Redo log是覆写模式的，即使使用了文件系统的cache，也不会占用太多
+    ```
+
+- IO调度策略  
+
+  ```shell
+  # 调整IO调度策略
+  # centos7 默认是deadline
+  cat  /sys/block/sda/queue/scheduler
+
+  # 临时修改为deadline(centos6)
+  echo deadline >/sys/block/sda/queue/scheduler 
+  vi /boot/grub/grub.conf
+  # 更改到如下内容:
+  kernel /boot/vmlinuz-2.6.18-8.el5 ro root=LABEL=/ elevator=deadline rhgb quiet
+  ```
+
+  ```txt
+  IO ：
+      raid
+      no lvm      不用lvm，用独立磁盘(损坏后不好恢复)
+      ext4或xfs
+      ssd
+      IO调度策略
+  提前规划好以上所有问题，减轻MySQL优化的难度。
+  ```
+
+- 应用端  
+  1. 开发过程规范,标准。 —— 做好审核  
+  2. 减少烂SQL:不走索引,复杂逻辑,切割大事务  
+  3. 避免业务逻辑错误,避免锁争用  
+  这个阶段,需要我们DBA深入业务,或者要和开发人员\业务人员配合实现  
+  >这个阶段的效果最明显（优化,最根本的是"优化"人）。  
+
+### 优化细节 ###
+
+- Max_connections  
+  - 简介  
+    Mysql的最大连接数，如果服务器的并发请求量比较大，可以调高这个值，当然这是要建立在机器能够支撑的情况下。  
+    因为如果连接数越来越多，mysql会为每个连接提供缓冲区，就会开销的越多的内存，所以需要适当的调整该值，不能随便去提高设值。  
+  - 判断依据  
+
+    ```sql
+    show variables like 'max_connections';
+    show status like 'Max_used_connections';
+    ```
+
+  - 修改方式举例  
+
+    ```shell
+    vim /etc/my.cnf 
+    Max_connections=1024
+    ```
+
+  - 补充  
+    1.开启数据库时，我们可以临时设置一个比较大的测试值。
+    2.使用 `show status like 'Max_used_connections';` 命令观察变化。
+    3.如果max_used_connections跟max_connections相同，那么就是max_connections设置过低或者超过服务器的负载上限了，低于10%则设置过大。
+
+- back_log  
+  - 简介  
+    mysql能暂存的连接数量，当主要mysql线程在一个很短时间内得到非常多的连接请求时候它就会起作用。  
+    如果mysql的连接数据达到max_connections时候，新来的请求将会被存在堆栈中，等待某一连接释放资源，该推栈的数量即 back_log 。  
+    如果等待连接的数量超过 back_log ，将不被授予连接资源。  
+    back_log 的值是指在mysql暂时停止回答新请求之前的短时间内有多少个请求可以被存在推栈中。  
+    只有如果期望在一个短时间内有很多连接的时候需要增加它。  
+  - 判断依据
+    `show full processlist`  
+    发现大量的待连接进程时，就需要加大 back_log 或者加大 max_connections 的值。  
+  - 修改方式举例
+
+    ```shell
+    vim /etc/my.cnf 
+    back_log=1024
+    ```
+
+- wait_timeout 和 interactive_timeout
+  - 简介
+    wait_timeout:  
+    指的是mysql在关闭一个非交互的连接之前所要等待的秒数。  
+    interactive_timeout:  
+    指的是mysql在关闭一个交互的连接之前所需要等待的秒数。  
+    比如我们在终端上进行mysql管理，使用的即是交互的连接，这时，如果没有操作的时间超过了 interactive_time 设置的时间就会自动的断开。  
+    默认的是28800，可调优为7200。  
+    wait_timeout:  
+    如果设置太小，那么连接关闭的就很快，从而使一些持久的连接不起作用。  
+  - 设置建议  
+    如果设置太大，容易造成连接打开时间过长，在show processlist时候，能看到很多的连接 ，一般希望wait_timeout尽可能低。  
+  - 修改方式举例  
+    wait_timeout=60  
+    interactive_timeout=1200(一般不做调整)  
+  - 优化思路  
+    长连接的应用，是为了不去反复的回收和分配资源，降低额外的开销。  
+    一般我们会将wait_timeout设定比较小，interactive_timeout要和应用开发人员沟通长链接的应用是否很多。  
+    如果他需要长链接，那么这个值可以不需要调整。  
+    另外还可以使用类外的参数弥补。  
+
+- key_buffer_size  
+  - 简介  
+    key_buffer_size指定索引缓冲区的大小，它决定索引处理的速度，尤其是索引读的速度。  
+    1.此参数与myisam表的索引有关。（几乎不用）  
+    2.与临时表的创建有关（多表链接、子查询中、union）。  
+    在有以上查询语句出现的时候，需要创建临时表，用完之后会被丢弃。  
+    临时表有两种创建方式：  
+    内存中------->key_buffer_size  
+    磁盘上------->ibdata1(5.6),ibtmp1 (5.7）  
+  - 设置依据  
+    通过 key_read_requests 和 key_reads 可以知道 key_baffer_size 设置是否合理。  
+
+    ```sql
+    mysql> show variables like "key_buffer_size%";
+    +-----------------+---------+
+    | Variable_name   | Value   |
+    +-----------------+---------+
+    | key_buffer_size | 8388608 |
+    +-----------------+---------+
+    1 row in set (0.00 sec)
+
+    mysql> 
+    mysql> show status like "key_read%";
+    +-------------------+-------+
+    | Variable_name     | Value |
+    +-------------------+-------+
+    | Key_read_requests | 10    |
+    | Key_reads         | 2     |
+    +-------------------+-------+
+    2 rows in set (0.00 sec)
+    ```
+
+    一共有10个索引读取请求，有2个请求在内存中没有找到直接从硬盘中读取索引，控制在 5%以内比较好。  
+    >注：key_buffer_size只对myisam表起作用，即使不使用myisam表，但是内部的临时磁盘表是myisam表，也要使用该值。
+
+    可以使用检查状态值created_tmp_disk_tables得知：  
+
+    ```sql
+    mysql> show status like "created_tmp%";
+    +-------------------------+-------+
+    | Variable_name           | Value |
+    +-------------------------+-------+
+    | Created_tmp_disk_tables | 0     |
+    | Created_tmp_files       | 6     |
+    | Created_tmp_tables      | 1     |
+    +-------------------------+-------+
+    3 rows in set (0.00 sec)
+    ```
+
+    通常地，我们习惯以：  
+    Created_tmp_tables/(Created_tmp_disk_tables + Created_tmp_tables)  越高越好。  
+    Created_tmp_disk_tables/(Created_tmp_disk_tables + Created_tmp_tables) 越低越好。  
+
+    或者以各自的一个时段内的差额计算，来判断基于内存的临时表利用率。  
+    所以，我们会比较关注 Created_tmp_disk_tables 是否过多，从而认定当前服务器运行状况的优劣。  
+    Created_tmp_disk_tables/(Created_tmp_disk_tables + Created_tmp_tables)  
+    **控制在5%-10%以内**  
+
+    看以下例子，在调用mysqldump备份数据时，大概执行步骤如下：  
+
+    ```log
+    180322 17:39:33       7 Connect     root@localhost on
+    7 Query       /*!40100 SET @@SQL_MODE='' */
+    7 Init DB     guo
+    7 Query       SHOW TABLES LIKE 'guo'
+    7 Query       LOCK TABLES `guo` READ /*!32311 LOCAL */
+    7 Query       SET OPTION SQL_QUOTE_SHOW_CREATE=1
+    7 Query       show create table `guo`
+    7 Query       show fields from `guo`
+    7 Query       show table status like 'guo'
+    7 Query       SELECT /*!40001 SQL_NO_CACHE */ * FROM `guo`
+    7 Query       UNLOCK TABLES
+    7 Quit
+    ```
+
+    其中，有一步是：show fields from `guo`。  
+    从slow query记录的执行计划中，可以知道它也产生了 Tmp_table_on_disk。  
+
+    所以说，以上公式并不能真正反映到mysql里临时表的利用率。  
+    有些情况下产生的 Tmp_table_on_disk 我们完全不用担心。  
+    因此没必要过分关注 Created_tmp_disk_tables，但如果它的值大的离谱的话，那就好好查一下，你的服务器到底都在执行什么查询了。  
+  - 配置方法
+    在my.cnf中配置 key_buffer_size=64M  
+
+- query_cache_size(不建议开启)  
+  - 简介  
+    查询缓存简称QC，使用查询缓冲，mysql将查询结果存放在缓冲区中，今后对于同样的select语句（区分大小写）,将直接从缓冲区中读取结果。  
+    SQL层：  
+    `select * from t1 where name=:NAME;`  
+    `select * from t1 where name=:NAME;`  
+
+    1、查询完结果之后，会对SQL语句进行hash运算，得出hash值,我们把他称之为SQL_ID  
+    2、会将存储引擎返回的结果+SQL_ID存储到缓存中  
+
+  - 存储方式  
+    例子：`select * from t1  where id=10;`      100次  
+    1、将 `select * from t1  where id=10;` 进行hash运算计算出一串hash值，我们把它称之为“SQL_ID"  
+    2、将存储引擎返回上来的表的内容+SQLID存储到查询缓存中  
+
+  - 使用方式：
+    1、一条SQL执行时，进行hash运算，得出SQLID，去找query cache  
+    2、如果cache中有，则直接返回数据行，如果没有，就走原有的SQL执行流程  
+    一个sql查询如果以select开头，那么mysql服务器将尝试对其使用查询缓存。  
+    >注：两个sql语句，只要想差哪怕是一个字符（列如大小写不一样；多一个空格等）,那么这两个sql将使用不同的一个cache。  
+
+  - 判断依据  
+
+    ```txt
+    mysql> show status like "%Qcache%";
+    +-------------------------+---------+
+    | Variable_name           | Value   |
+    +-------------------------+---------+
+    | Qcache_free_blocks      | 1       |
+    | Qcache_free_memory      | 1031360 |
+    | Qcache_hits             | 0       |
+    | Qcache_inserts          | 0       |
+    | Qcache_lowmem_prunes    | 0       |
+    | Qcache_not_cached       | 2002    |
+    | Qcache_queries_in_cache | 0       |
+    | Qcache_total_blocks     | 1       |
+    +-------------------------+---------+
+    8 rows in set (0.00 sec)
+
+    ---------------------状态说明--------------------
+    Qcache_free_blocks：缓存中相邻内存块的个数。
+    如果该值显示较大，则说明Query Cache 中的内存碎片较多了，FLUSH QUERY CACHE会对缓存中的碎片进行整理，从而得到一个空闲块。
+    注：当一个表被更新之后，和它相关的cache 
+    blocks将被free。但是这个block依然可能存在队列中，除非是在队列的尾部。可以用FLUSH QUERY CACHE语句来清空free blocks
+
+    Qcache_free_memory：Query Cache 中目前剩余的内存大小。通过这个参数我们可以较为准确的观察出当前系统中的Query Cache 内存大小是否足够，是需要增加还是过多了。
+
+    Qcache_hits：表示有多少次命中缓存。我们主要可以通过该值来验证我们的查询缓存的效果。数字越大，缓存效果越理想。
+
+    Qcache_inserts：表示多少次未命中然后插入，意思是新来的SQL请求在缓存中未找到，不得不执行查询处理，执行查询处理后把结果insert到查询缓存中。这样的情况的次数越多，表示查询缓存应用到的比较少，效果也就不理想。当然系统刚启动后，查询缓存是空的，这很正常。
+
+    Qcache_lowmem_prunes：
+    多少条Query因为内存不足而被清除出QueryCache。通过“Qcache_lowmem_prunes”和“Qcache_free_memory”相互结合，能够更清楚的了解到我们系统中Query Cache 的内存大小是否真的足够，是否非常频繁的出现因为内存不足而有Query 被换出。这个数字最好长时间来看；如果这个数字在不断增长，就表示可能碎片非常严重，或者内存很少。（上面的free_blocks和free_memory可以告诉您属于哪种情况）
+
+    Qcache_not_cached：不适合进行缓存的查询的数量，通常是由于这些查询不是 SELECT 语句或者用了now()之类的函数。
+
+    Qcache_queries_in_cache：当前Query Cache 中cache 的Query 数量；
+    Qcache_total_blocks：当前Query Cache 中的block 数量；。
+    Qcache_hits / (Qcache_inserts+Qcache_not_cached+Qcache_hits) 
+        90/         10000             0             90
+
+    如果出现hits比例过低，其实就可以关闭查询缓存了。使用redis专门缓存数据库
+
+    Qcache_free_blocks    来判断碎片
+    Qcache_free_memory   +   Qcache_lowmem_prunes  来判断内存够不够
+    Qcache_hits 多少次命中  Qcache_hits / (Qcache_inserts+Qcache_not_cached+Qcache_hits)  
+    ```
+
+  - 配置示例
+
+    ```txt
+    mysql> show variables like '%query_cache%' ;
+    +------------------------------+---------+
+    | Variable_name                | Value   |
+    +------------------------------+---------+
+    | have_query_cache             | YES     |
+    | query_cache_limit            | 1048576 |
+    | query_cache_min_res_unit     | 4096    |
+    | query_cache_size             | 1048576 |
+    | query_cache_type             | OFF     |
+    | query_cache_wlock_invalidate | OFF     |
+    +------------------------------+---------+
+    6 rows in set (0.00 sec)
+
+    -------------------配置说明-------------------------------
+    以上信息可以看出query_cache_type为off表示不缓存任何查询
+
+    各字段的解释：
+    query_cache_limit：超过此大小的查询将不缓存
+    query_cache_min_res_unit：缓存块的最小大小，query_cache_min_res_unit的配置是一柄”双刃剑”，默认是4KB，设置值大对大数据查询有好处，但如果你的查询都是小数据查询，就容易造成内存碎片和浪费。
+    query_cache_size：查询缓存大小 (注：QC存储的最小单位是1024byte，所以如果你设定了一个不是1024的倍数的值，这个值会被四舍五入到最接近当前值的等于1024的倍数的值。)
+
+    query_cache_type：缓存类型，决定缓存什么样的查询，注意这个值不能随便设置，必须设置为数字，可选项目以及说明如下：
+    如果设置为0，那么可以说，你的缓存根本就没有用，相当于禁用了。
+    如果设置为1，将会缓存所有的结果，除非你的select语句使用SQL_NO_CACHE禁用了查询缓存。
+    如果设置为2，则只缓存在select语句中通过SQL_CACHE指定需要缓存的查询。
+
+    修改/etc/my.cnf,配置完后的部分文件如下：
+    query_cache_size=128M
+    query_cache_type=1
+    ```
+
+- sort_buffer_size  
+  - 简介：
+    每个需要进行排序的线程(会话级别)分配该大小的一个缓冲区。
+    涉及以下命令：  
+    ORDER BY  
+    GROUP BY  
+    distinct  
+    union  
+
+  - 配置依据  
+    sort_buffer_size 的值并不是越大越好。  
+    由于是connection级的参数，过大的设置+高并发可能会耗尽系统内存资源。  
+    列如：500个连接将会消耗500*sort_buffer_size（2M）=1G内存  
+  - 配置方法  
+    修改 /etc/my.cnf 文件，在[mysqld]下面添加如下：  
+    sort_buffer_size=1M  
+
+  >可先不配置该参数，等到业务中大量使用排序的时候再酌情进行设置。  
+  >算法是：max_connections*sort_buffer_size*8 <= 内存  
+
+- max_allowed_packet  
+  - 简介  
+    mysql根据配置文件会限制，server接受的数据包大小。  
+  - 配置依据  
+    有时候大的插入和更新会受 max_allowed_packet 参数限制，导致写入或者更新失败，一般256M就够了，必须设置1024的倍数。  
+  - 配置方法  
+    max_allowed_packet=256M  
 
 ### 锁 ###
 
