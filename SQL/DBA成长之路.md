@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-03 22:46:41
+ * @LastEditTime: 2021-03-04 14:32:22
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -115,10 +115,15 @@
     - [优化思路分解](#优化思路分解)
     - [优化细节](#优化细节)
     - [锁](#锁)
+    - [锁的监控及处理](#锁的监控及处理)
+    - [主从优化](#主从优化)
   - [18.MySQL监控（zabbix,open-falcon）](#18mysql监控zabbixopen-falcon)
   - [19.RDS（阿里云）](#19rds阿里云)
 - [还需要学习的Nosql](#还需要学习的nosql)
   - [1.Redis](#1redis)
+    - [Redis简介](#redis简介)
+    - [NoSQL 产品(key-value)](#nosql-产品key-value)
+    - [Redis功能介绍](#redis功能介绍)
   - [2.MongoDB](#2mongodb)
 - [另外需要了解的关系型数据库](#另外需要了解的关系型数据库)
   - [1.Oracle](#1oracle)
@@ -4608,7 +4613,7 @@ ER分片
 
 ### 优化细节 ###
 
-- Max_connections  
+- Max_connections*****  
   - 简介  
     Mysql的最大连接数，如果服务器的并发请求量比较大，可以调高这个值，当然这是要建立在机器能够支撑的情况下。  
     因为如果连接数越来越多，mysql会为每个连接提供缓冲区，就会开销的越多的内存，所以需要适当的调整该值，不能随便去提高设值。  
@@ -4631,7 +4636,7 @@ ER分片
     2.使用 `show status like 'Max_used_connections';` 命令观察变化。
     3.如果max_used_connections跟max_connections相同，那么就是max_connections设置过低或者超过服务器的负载上限了，低于10%则设置过大。
 
-- back_log  
+- back_log***  
   - 简介  
     mysql能暂存的连接数量，当主要mysql线程在一个很短时间内得到非常多的连接请求时候它就会起作用。  
     如果mysql的连接数据达到max_connections时候，新来的请求将会被存在堆栈中，等待某一连接释放资源，该推栈的数量即 back_log 。  
@@ -4648,7 +4653,7 @@ ER分片
     back_log=1024
     ```
 
-- wait_timeout 和 interactive_timeout
+- wait_timeout 和 interactive_timeout****  
   - 简介
     wait_timeout:  
     指的是mysql在关闭一个非交互的连接之前所要等待的秒数。  
@@ -4669,7 +4674,7 @@ ER分片
     如果他需要长链接，那么这个值可以不需要调整。  
     另外还可以使用类外的参数弥补。  
 
-- key_buffer_size  
+- key_buffer_size*****  
   - 简介  
     key_buffer_size指定索引缓冲区的大小，它决定索引处理的速度，尤其是索引读的速度。  
     1.此参数与myisam表的索引有关。（几乎不用）  
@@ -4753,7 +4758,7 @@ ER分片
   - 配置方法
     在my.cnf中配置 key_buffer_size=64M  
 
-- query_cache_size(不建议开启)  
+- query_cache_size(不建议开启)***  
   - 简介  
     查询缓存简称QC，使用查询缓冲，mysql将查询结果存放在缓冲区中，今后对于同样的select语句（区分大小写）,将直接从缓冲区中读取结果。  
     SQL层：  
@@ -4875,13 +4880,264 @@ ER分片
   >可先不配置该参数，等到业务中大量使用排序的时候再酌情进行设置。  
   >算法是：max_connections*sort_buffer_size*8 <= 内存  
 
-- max_allowed_packet  
+- max_allowed_packet*****  
   - 简介  
     mysql根据配置文件会限制，server接受的数据包大小。  
   - 配置依据  
     有时候大的插入和更新会受 max_allowed_packet 参数限制，导致写入或者更新失败，一般256M就够了，必须设置1024的倍数。  
   - 配置方法  
     max_allowed_packet=256M  
+
+- join_buffer_size***  
+  `select a.name,b.name from a join b on a.id=b.id where xxxx`  
+  用于表间关联缓存的大小，和 sort_buffer_size 一样，该参数对应的分配内存也是每个连接独享。  
+  尽量在SQL与方面进行优化，效果较为明显。  
+  优化的方法：在on条件列加索引，至少应当是有MUL索引。  
+
+- thread_cache_size*****  
+  - 简介  
+    服务器线程缓存，这个值表示可以重新利用保存在缓存中线程的数量,当断开连接时,那么客户端的线程将被放到缓存中以响应下一个客户而不是销毁(前提是缓存数未达上限)。  
+    如果线程重新被请求，那么请求将从缓存中读取,如果缓存中是空的或者是新的请求，那么这个线程将被重新创建。  
+    如果有很多新的线程，增加这个值可以改善系统性能。  
+  - 配置依据  
+    通过比较 Connections 和 Threads_created 状态的变量，可以看到这个变量的作用。  
+    设置规则：1GB 内存配置为8，2GB配置为16，3GB配置为32，4GB或更高内存，可配置更大。  
+    服务器处理此客户的线程将会缓存起来以响应下一个客户而不是销毁(前提是缓存数未达上限)
+
+    ```sql
+    -- 观察试图连接到MySQL(不管是否连接成功)的连接数
+    mysql>  show status like 'threads_%';
+    +-------------------+-------+
+    | Variable_name     | Value |
+    +-------------------+-------+
+    | Threads_cached    | 8     |
+    | Threads_connected | 2     |
+    | Threads_created   | 4783  |
+    | Threads_running   | 1     |
+    +-------------------+-------+
+    4 rows in set (0.00 sec)
+    ```
+
+    Threads_cached: 代表当前此时此刻线程缓存中有多少空闲线程。  
+    Threads_connected: 代表当前已建立连接的数量，因为一个连接就需要一个线程，所以也可以看成当前被使用的线程数。  
+    Threads_created: 代表从最近一次服务启动，已创建线程的数量。如果发现Threads_created值过大的话，表明MySQL服务器一直在创建线程，这也是比较耗cpu SYS资源，可以适当增加配置文件中thread_cache_size值。  
+    Threads_running: 代表当前激活的（非睡眠状态）线程数，并不是代表正在使用的线程数，有时候连接已建立，但是连接处于sleep状态。  
+  - 配置方法  
+    配置文件my.cnf中配置 thread_cache_size=32  
+
+    整理：  
+    Threads_created: 一般在架构设计阶段，会设置一个测试值，做压力测试，结合zabbix监控，看一段时间内此状态的变化。  
+    如果在一段时间内，Threads_created趋于平稳，说明对应参数设定是OK。  
+    如果一直陡峭的增长，或者出现大量峰值，那么继续增加此值的大小，在系统资源够用的情况下（内存）。  
+
+- innodb_buffer_pool_size*****  
+  - 简介  
+    对于InnoDB表来说, innodb_buffer_pool_size 的作用就相当于 key_buffer_size 对于MyISAM表的作用一样。  
+  - 配置依据  
+    InnoDB使用该参数指定大小的内存来缓冲数据和索引。  
+    使用命令 `show engine innodb status\G;` 来观察缓冲区使用情况。  
+    对于单独的MySQL数据库服务器，最大可以把该值设置成物理内存的80%,一般我们建议不要超过物理内存的70%。  
+  - 配置方法  
+    配置文件my.cnf中配置 innodb_buffer_pool_size=2048M  
+
+- innodb_flush_log_at_trx_commit******  
+  - 简介  
+    主要控制了innodb将log buffer中的数据写入日志文件(redo)并刷写到磁盘的时间点，取值分别为0、1、2三个。  
+    0. 表示当事务提交时，不做日志写入操作，而是每秒钟将log buffer中的数据写入日志文件并flush磁盘一次；  
+    1. 每次事务的提交都会引起redo日志文件写入、flush磁盘的操作，确保了事务的ACID；  
+    2. 每次事务提交引起写入日志文件的动作,但每秒钟完成一次flush磁盘操作。  
+
+  - 配置依据  
+    实际测试发现，该值对插入数据的速度影响非常大。设置为2时插入10000条记录只需要2秒，设置为0时只需要1秒，而设置为1时则需要229秒。  
+    因此，MySQL手册也建议尽量将插入操作合并成一个事务，这样可以大幅提高速度。  
+    根据MySQL官方文档，在允许丢失最近部分事务的危险的前提下，可以把该值设为0或2。  
+  - 配置方法  
+    配置文件my.cnf中配置 innodb_flush_log_at_trx_commit=1  
+    双一标准中的一个1  
+
+- innodb_thread_concurrency***  
+  - 简介  
+    此参数用来设置innodb线程的并发数量，默认值为0表示不限制。  
+  - 配置依据  
+
+    ```txt
+    在官方doc上，对于 innodb_thread_concurrency 的使用，也给出了一些建议。
+    如下：
+      1.如果一个工作负载中，并发用户线程的数量小于64，建议设置 innodb_thread_concurrency=0
+      2.如果工作负载一直较为严重甚至偶尔达到顶峰，建议先设置 innodb_thread_concurrency=128
+        并通过不断的降低这个参数，96, 80, 64等等，直到发现能够提供最佳性能的线程数。
+        例如：
+          假设系统通常有40到50个用户，但定期的数量增加至60，70，甚至200。
+          你会发现，性能在80个并发用户设置时表现稳定，如果高于这个数，性能反而下降。
+          在这种情况下，建议设置innodb_thread_concurrency参数为80，以避免影响性能。
+      3.如果你不希望InnoDB使用的虚拟CPU数量比用户线程使用的虚拟CPU更多（比如20个虚拟CPU），
+        建议通过设置innodb_thread_concurrency 参数为这个值（也可能更低，这取决于性能体现）。
+      4.如果你的目标是将MySQL与其他应用隔离，你可以考虑绑定mysqld进程到专有的虚拟CPU。
+        但是需要注意的是，这种绑定，在myslqd进程一直不是很忙的情况下，可能会导致非最优的硬件使用率。
+        在这种情况下，你可能会设置mysqld进程绑定的虚拟 CPU，允许其他应用程序使用虚拟CPU的一部分或全部。
+      5.在某些情况下，最佳的innodb_thread_concurrency参数设置可以比虚拟CPU的数量小。
+      6.定期检测和分析系统，负载量、用户数或者工作环境的改变可能都需要对 innodb_thread_concurrency 参数的设置进行调整。
+
+    top 查看 cpu 工作情况
+    设置标准：
+    1.观察每个cpu的各自的负载情况，均不均匀。
+      发现不平均,先设置参数为cpu个数,然后不断增加(一倍)这个数值。
+      一直观察top状态,直到达到比较均匀时,说明已经到位了。
+    2.当前的连接数，有没有达到顶峰。
+      show status like 'threads_%';
+      show processlist;
+    3.CPU少的话没有必要设置该参数。
+    ```
+
+  - 配置方法  
+    innodb_thread_concurrency=8  
+
+- innodb_log_buffer_size****  
+  此参数确定写日志文件所用的内存大小，以M为单位。  
+  缓冲区更大能提高性能，对于较大的事务，可以增大缓存大小。  
+  innodb_log_buffer_size=128M  
+
+  设定依据：  
+  1、大事务： 存储过程调用 CALL  
+  2、多事务  
+
+- innodb_log_file_size*****
+  设置 ib_logfile0 ib_logfile1 的大小
+  此参数确定数据日志文件的大小，以M为单位，更大的设置可以提高性能，单个大小建议不宜超过256M。  
+  innodb_log_file_size=128M  
+  innodb_log_files_in_group=3  
+  >为提高性能(事务提交)，MySQL可以以循环方式将日志写到多个文件中，推荐设置为3-5  
+  >文件大小和数量设置过大的话也会怎么CSR的负担。  
+
+- read_buffer_size=1M**  
+  MySql读入缓冲区大小。  
+  对表进行顺序扫描的请求将分配一个读入缓冲区，MySql会为它分配一段内存缓冲区。  
+  如果对表的顺序扫描请求非常频繁，并且你认为频繁扫描进行得太慢，可以通过增加该变量值以及内存缓冲区大小提高其性能。  
+  与 sort_buffer_size 一样，该参数对应的分配内存也是每个连接独享。  
+
+- read_rnd_buffer_size=1M**  
+  MySql的随机读（查询操作）缓冲区大小。  
+  当按任意顺序读取行时(例如，按照排序顺序)，将分配一个随机读缓存区。  
+  进行排序查询时，MySql会首先扫描一遍该缓冲，以避免磁盘搜索，提高查询速度，如果需要排序大量数据，可适当调高该值。  
+  同样，MySql会为每个客户连接发放该缓冲空间，所以应尽量适当设置该值，以避免内存开销过大。  
+  >注：顺序读是指根据索引的叶节点数据就能顺序地读取所需要的行数据。  
+  >随机读是指一般需要根据辅助索引叶节点中的主键寻找实际行数据，而辅助索引和主键所在的数据段不同，因此访问方式是随机的。  
+
+- bulk_insert_buffer_size=8M**  
+  批量插入数据缓存大小，可以有效提高插入效率，默认为8M  
+  插入较多时可以使用其他插入有优势的引擎：
+  tokuDB - percona  
+  myrocks  
+  RocksDB
+  其他数据产品：TiDB,MongoDB  
+
+- binary log*****  
+  在配置文件中的配置：  
+
+  ```conf
+  # 开启binlog
+  log-bin=/data/mysql-bin
+  # 为每个session 分配的内存。
+  ## 在事务过程中用来存储二进制日志的缓存, 提高记录bin-log的效率。
+  ## 没有什么大事务，dml也不是很频繁的情况下可以设置小一点。
+  ## 如果事务大而且多，dml操作也频繁，则可以适当的调大一点。
+  ## 前者建议是--1M，后者建议是：即 2--4M
+  binlog_cache_size=2M
+  # 表示的是binlog 能够使用的最大cache 内存大小
+  max_binlog_cache_size=8M
+  # 指定binlog日志文件的大小。
+  ## 如果当前的日志大小达到 max_binlog_size ,就会自动创建新的二进制日志。
+  ## 不能将该变量设置为大于1GB或小于4096字节。
+  ## 默认值是1GB。在导入大容量的sql文件时，建议临时关闭sql_log_bin，否则硬盘扛不住，而且建议定期做备份删除。
+  max_binlog_size=512M
+  # 定义了mysql清除过期日志的时间。二进制日志自动删除的天数。
+  # 默认值为0,表示“没有自动删除”。
+  expire_logs_days = 7
+  # RBR 行记录模式
+  binlog_format=row 
+  # 双一标准(基于安全的控制)。
+  # 什么时候刷写binlog到磁盘，1表示每次事务commit就刷写
+  sync_binlog=1
+  # 什么时候刷写redo到磁盘，每次事务提交，都会立即刷写redo到磁盘
+  innodb_flush_log_at_trx_commit=1
+  ```
+
+  临时关闭binlog `set sql_log_bin=0;`  
+  查看 `show status like 'com_%';`  
+
+- 安全参数*****
+  innodb_flush_method=(O_DIRECT, fsync)  
+  - fsync  
+    1.在数据页需要持久化时，首先将数据写入OS buffer中，然后由os决定什么时候写入磁盘。  
+    2.在redo buffuer需要持久化时，首先将数据写入OS buffer中，然后由os决定什么时候写入磁盘。  
+    但，如果innodb_flush_log_at_trx_commit=1的话，日志还是直接每次commit直接写入磁盘。  
+  - O_DIRECT
+    1.在数据页需要持久化时，直接写入磁盘。  
+    2.在redo buffuer需要持久化时，首先将数据写入OS buffer中，然后由os决定什么时候写入磁盘。  
+    但，如果 innodb_flush_log_at_trx_commit=1的话，日志还是直接每次commit直接写入磁盘。  
+  - 最安全模式  
+    innodb_flush_log_at_trx_commit=1  
+    innodb_flush_method=O_DIRECT  
+  - 最高性能模式  
+    innodb_flush_log_at_trx_commit=0  
+    innodb_flush_method=fsync  
+  >一般情况下，我们更偏向于安全。  
+  - 双一标准
+    innodb_flush_log_at_trx_commit=1  
+    sync_binlog=1  
+    innodb_flush_method=O_DIRECT  
+
+- 参数优化参考  
+  配置文件 my.cnf 中
+
+  ```cnf
+  [mysqld]
+  basedir=/application/mysql
+  datadir=/data/mysql/data
+  socket=/tmp/mysql.sock
+  log-error=/var/log/mysql.log
+  log_bin=/data/binlog/mysql-bin
+  binlog_format=row
+  skip-name-resolve
+  server_id=53
+  gtid-mode=on
+  enforce-gtid-consistency=true
+  log-slave-updates=1
+  relay_log_purge=0
+  max_connections=1024
+  back_log=128
+  wait_timeout=60
+  interactive_timeout=7200
+  key_buffer_size=16M
+  query_cache_size=64M
+  query_cache_type=1
+  query_cache_limit=50M
+  max_connect_errors=20
+  sort_buffer_size=2M
+  max_allowed_packet=32M
+  join_buffer_size=2M
+  thread_cache_size=200
+  innodb_buffer_pool_size=1024M
+  innodb_flush_log_at_trx_commit=1
+  innodb_log_buffer_size=32M
+  innodb_log_file_size=128M
+  innodb_log_files_in_group=3
+  binlog_cache_size=2M
+  max_binlog_cache_size=8M
+  max_binlog_size=512M
+  expire_logs_days=7
+  read_buffer_size=2M
+  read_rnd_buffer_size=2M
+  bulk_insert_buffer_size=8M
+  [client]
+  socket=/tmp/mysql.sock
+  ```
+
+  压力测试  
+
+  ```shell
+  mysqlslap --defaults-file=/etc/my.cnf --concurrency=100 --iterations=1 --create-schema='test' --query="select * from test.t100w where k2='cdxy'" engine=innodb --number-of-queries=200000 -uroot -p123 -verbose
+  ```
 
 ### 锁 ###
 
@@ -4893,10 +5149,164 @@ ER分片
   解决：优化业务SQL，让事务串联执行。  
 
 - 扩展  
-  Next LOCK  
-  GAP LOCK  
+  Next LOCK 临键锁  
+  GAP LOCK 间隙锁  
 
 >工作中需要排查锁的争用、锁等待、死锁等故障。
+
+### 锁的监控及处理 ###
+
+- 锁等待模拟  
+  - 概念  
+    Record Lock 记录锁  
+    Next Lock 临键锁  
+    GAP Lock 间隙锁  
+
+    X 排它锁(写锁)  
+    S 读锁(共享锁 innodb的undo快照技术实现了非锁定读，除非在select后加 for update 使用显式锁)  
+
+    IX 意向排它锁  
+    IS 意向读(共享)锁  
+
+- 监控锁状态(看有没有锁等待)  
+
+  ![监控锁状态](lock.webp)
+
+  ```sql
+  SHOW  STATUS LIKE 'innodb_row_lock%';
+  # Innodb_row_lock_current_waits 当前锁等待数
+  # Innodb_row_lock_waits 历史锁等待数
+  ```
+
+- 查看哪个事务在等待(被阻塞了)
+
+  ```sql
+  USE information_schema
+  SELECT * FROM information_schema.INNODB_TRX WHERE trx_state='LOCK WAIT';
+  # trx_id: 事务ID号
+  # trx_state: 当前事务的状态
+  # trx_mysql_thread_id: 连接层的,连接线程ID(SHOW PROCESSLIST ===> Id或trx_id )
+  # trx_query: 当前被阻塞的操作(一般是要丢给开发的)
+  ```
+
+- 追查锁源  
+
+  ```sql
+  # ====>被锁的和锁定它的之间关系
+  SELECT * FROM sys.innodb_lock_waits;
+
+  # locked_table: 哪张表出现的等待 
+  # waiting_trx_id: 等待的事务(与上个视图trx_id 对应)
+  # waiting_pid: 等待的线程号(与上个视图trx_mysql_thread_id)
+  # blocking_trx_id: 锁源的事务ID 
+  # blocking_pid: 锁源的线程号
+  # sql_kill_blocking_query 推荐的临时解决锁争用问题语句
+  ```
+
+- 通过连接线程id找到锁源的thread_id(SQL层的线程id)  
+  `SELECT * FROM performance_schema.threads WHERE processlist_id=15;`  
+
+- 找到锁源的SQL语句  
+
+  ```sql
+  -- 当前在执行的语句
+  SELECT * FROM performance_schema.`events_statements_current` WHERE thread_id=41;
+  -- 执行语句的历史
+  SELECT * FROM performance_schema.`events_statements_history` WHERE thread_id=41;
+  ```
+
+- 优化项目:锁的监控及处理  
+
+  ```txt
+  1. 背景: 
+  硬件环境: DELL R720,E系列16核,48G MEM,SAS*900G*6,RAID10
+  在例行巡检时,发现9-11点时间段的CPU压力非常高(80-90%)
+
+  2. 项目的职责
+      2.1 通过top详细排查,发现mysqld进程占比达到了700-800%
+      2.2 其中有量的CPU是被用作的SYS和WAIT,us处于正常
+      2.3 怀疑是MySQL 锁 或者SQL语句出了问题
+      2.4 经过排查slowlog及锁等待情况,发现有大量锁等待及少量慢语句    
+      (1) pt-query-diagest 查看慢日志  
+      (2) 锁等待有没有?
+      db03 [(none)]>show status like 'innodb_row_lock%';
+      +-------------------------------+-------+
+      | Variable_name                 | Value |
+      +-------------------------------+-------+
+      | Innodb_row_lock_current_waits | 0     |
+      | Innodb_row_lock_time          | 0     |
+      | Innodb_row_lock_time_avg      | 0     |
+      | Innodb_row_lock_time_max      | 0     |
+      | Innodb_row_lock_waits         | 0     |
+      +-------------------------------+-------+
+      情况一:
+              有100多个current_waits,说明当前很多锁等待情况
+      情况二:
+              1000多个lock_waits,说明历史上发生过的锁等待很多
+      2.5 查看那个事务在等待(被阻塞了)
+      2.6 查看锁源事务信息(谁锁的我)
+      2.7 找到锁源的thread_id 
+      2.8 找到锁源的SQL语句
+  3. 找到语句之后,和应用开发人员进行协商   
+      (1)
+      开发人员描述,此语句是事务挂起导致
+      我们提出建议是临时kill 会话,最终解决问题
+      (2) 
+      开发人员查看后,发现是业务逻辑问题导致的死锁,产生了大量锁等待
+      临时解决方案,将阻塞事务的会话kill掉.
+      最终解决方案,修改代码中的业务逻辑
+  项目结果:
+      经过排查处理,锁等待的个数减少80%.解决了CPU持续峰值的问题.
+      
+  锁监控设计到的命令:
+  show status like 'innodb_rows_lock%'
+  select * from information_schema.innodb_trx;
+  select * from sys.innodb_lock_waits;
+  select * from performance_schema.threads;
+  select * from performance_schema.events_statements_current;
+  select * from performance_schema.events_statements_history;
+  ```
+
+- 死锁监控  
+
+  ```shell
+  show engine innodb status\G;
+  show variables like '%deadlock%';
+  vim /etc/my.cnf
+  innodb_print_all_deadlocks = 1
+  ```
+
+### 主从优化 ###
+
+```txt
+## 5.7 从库多线程MTS
+基本要求:
+5.7以上的版本
+必须开启GTID 
+binlog必须是row模式  
+
+gtid_mode=ON
+enforce_gtid_consistency=ON
+log_slave_updates=ON
+slave-parallel-type=LOGICAL_CLOCK
+slave-parallel-workers=16
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
+relay_log_recovery=ON
+
+5.7 :
+slave-parallel-type=LOGICAL_CLOCK
+slave-parallel-workers=8
+cpu核心数作为标准
+
+CHANGE MASTER TO
+  MASTER_HOST='10.0.0.128',
+  MASTER_USER='repl',
+  MASTER_PASSWORD='123',
+  MASTER_PORT=3307,
+  MASTER_AUTO_POSITION=1;
+start slave;
+```
 
 ## 18.MySQL监控（zabbix,open-falcon） ##
 
@@ -4905,6 +5315,41 @@ ER分片
 # 还需要学习的Nosql #
 
 ## 1.Redis ##
+
+### Redis简介 ###
+
+REmote DIctionary Server(Redis)是一个由 Salvatore Sanfilippo 写的 key-value 存储系统，是跨平台的非关系型数据库。  
+Redis 是完全开源的，遵守 BSD 协议，是一个高性能的 key-value 数据库。  
+
+Redis 与其他 key-value 缓存产品有以下三个特点：  
+Redis支持数据的持久化，可以将内存中的数据保存在磁盘中，重启的时候可以再次加载进行使用。  
+Redis不仅仅支持简单的key-value类型的数据，同时还提供list，set，zset，hash等数据结构的存储。  
+Redis支持数据的备份，即master-slave模式的数据备份。  
+
+### NoSQL 产品(key-value) ###
+
+RDBMS ：MySQL，Oracle ，MSSQL，PG  
+NoSQL  :Redis,MongoDB，列存储存储相关  
+NewSQL----->分布式数据库架构（学习了MongoDB）  
+缓存产品介绍：  
+memcached （大公司会做二次开发）  
+Redis  
+Tair  
+
+
+### Redis功能介绍 ###
+
+数据类型丰富 （笔试、面试）*****  
+支持持久化 （笔试、面试） *****  
+
+多种内存分配及回收策略  
+支持事务 （面试）****  
+消息队列、消息订阅  
+支持高可用****  
+支持分布式分片集群 （面试） *****  
+缓存穿透\雪崩（笔试、面试） *****  
+Redis API**  
+
 
 ## 2.MongoDB ##
 

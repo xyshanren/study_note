@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-17 09:56:30
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-17 14:49:21
+ * @LastEditTime: 2021-03-04 23:03:10
  * @Descriptiong: 
 -->
 
@@ -161,16 +161,25 @@ sqoop就是一个工具， 只需要在一个节点上进行安装即可。
 
 ### 连接MySQL ###
 
-- 列出所有的库名
-  使用 `list-databases` 命令
+- 列出所有的库名  
+  使用 `list-databases` 命令  
 
     ```shell
-    sqoop list-databases --connect jdbc:mysql://localhost:3306/ --username root -P
+    sqoop list-databases \
+    --connect jdbc:mysql://localhost:3306/ \
+    --driver com.mysql.cj.jdbc.Driver \
+    --username root -password pwd
     ```
 
-- 列出库中所有的表名
+- 列出库中所有的表名  
 
     ```shell
-    sqoop list-tables --connect jdbc:mysql://localhost:3306/ --username root -P
+    sqoop list-tables \
+    --connect jdbc:mysql://localhost:3306/database\
+    --driver com.mysql.cj.jdbc.Driver \
+    --username root -password pwd
     ```
+
+- 创建以MySQL中表为模板在hive中创建表  
+
 
