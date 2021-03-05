@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-17 09:56:30
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-04 23:03:10
+ * @LastEditTime: 2021-03-05 15:28:30
  * @Descriptiong: 
 -->
 
@@ -17,6 +17,7 @@
   - [sqoop的使用](#sqoop的使用)
     - [基本操作](#基本操作)
     - [连接MySQL](#连接mysql)
+    - [Sqoop的数据导入](#sqoop的数据导入)
 
 ## 概述 ##
 
@@ -182,4 +183,117 @@ sqoop就是一个工具， 只需要在一个节点上进行安装即可。
 
 - 创建以MySQL中表为模板在hive中创建表  
 
+  ```shell
+  # 在hive的默认库中创建表
+  sqoop create-hive-table \
+  --connect jdbc:mysql://192.168.56.114:3306/test \
+  --driver com.mysql.cj.jdbc.Driver \
+  --username mha --password mha \
+  --table t100w \
+  --hive-table t1
+  ```
+
+  >这里sqoop需要hive的jar包 `cp $hive/lib/hive-common-3.1.2.jar $sqoop/lib/`
+
+### Sqoop的数据导入 ###
+
+- 从RDBMS导入到HDFS中  
+  - 语法格式  
+    `sqoop import (generic-args) (tool-args)`  
+  - 常用参数  
+
+    ```txt
+    --connect <jdbc-uri> jdbc 连接地址
+    --connection-manager <class-name> 连接管理者
+    --driver <class-name> 驱动类
+    --hadoop-mapred-home <dir> $HADOOP_MAPRED_HOME
+    --help help 信息
+    -P 从命令行输入密码
+    --password <password> 密码
+    --username <username> 账号
+    --verbose 打印流程信息
+    --target-dir
+    --where
+    --columns
+    --fields-terminated-by '\t'
+    --query
+    --split-by
+    ```
+
+  - 示例  
+    普通导入：导入mysql中的t100w表的数据到HDFS上  
+    导入的默认路径：/user/hadoop/tmp  
+
+    ```shell
+    sqoop import \
+    --connect jdbc:mysql://192.168.56.114:3306/test \
+    --driver com.mysql.cj.jdbc.Driver \
+    --username mha \
+    --password mha \
+    --table tmp \
+    -m 1
+    ```
+
+  ![网页端查看导入文件](images/hadoop_explorer.jpg)
+
+  查看导入的文件内容：  
+  `hadoop fs -cat /user/hadoop/tmp/part-m-00000`  
+
+  ![查看导入文件的内容](images/dfs_cat.jpg)
+
+- 把MySQL数据库中的表数据导入到Hive中  
+  Sqoop 导入关系型数据到 hive 的过程是先导入到 hdfs，然后再 load 进入 hive  
+  - 普通导入  
+    数据存储在默认的default hive库中，表名就是对应的mysql的表名  
+
+    ```shell
+    sqoop import \
+    --connect jdbc:mysql://192.168.56.114:3306/test \
+    --driver com.mysql.cj.jdbc.Driver \
+    --username mha \
+    --password mha \
+    --table tmp \
+    --hive-import \
+    -m 1
+    ```
+
+  - 覆盖导入  
+    导入指定表，无表则创建，有数据则清空，并指定分隔符  
+
+    ```shell
+    sqoop import \
+    --connect jdbc:mysql://192.168.56.114:3306/world \
+    --driver com.mysql.cj.jdbc.Driver \
+    --username mha \
+    --password mha \
+    --table city \
+    --fields-terminated-by "\t" \
+    --lines-terminated-by "\n" \
+    --hive-import \
+    --hive-overwrite \
+    --create-hive-table \
+    --delete-target-dir \
+    --hive-database  myhive \
+    --hive-table city
+    ```
+
+  - 增量导入
+
+    ```shell
+    sqoop import \
+    --connect jdbc:mysql://192.168.56.114:3306/world \
+    --driver com.mysql.cj.jdbc.Driver \
+    --username mha \
+    --password mha \
+    --table city \
+    --fields-terminated-by "\t" \
+    --lines-terminated-by "\n" \
+    --target-dir /user/hive/warehouse/myhive.db/city \
+    --incremental  append \
+    --check-column  id \
+    --last-value 500
+    ```
+
+    >--targrt-dir的值设置成hive表数据文件存储的路径。假如你的hive表为外部表，则--targrt-dir要指向外部表的存储路径。  
+    >--last-value 500，意味mysql中id<=500的数据不会被导入。  
 

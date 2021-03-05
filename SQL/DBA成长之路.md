@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-04 14:32:22
+ * @LastEditTime: 2021-03-05 17:32:16
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -389,7 +389,7 @@ d.配置文件 `/etc/my.cnf` 参数错误；
 
 ### MySQL C/S结构介绍 ###
 
-![m1](mysql-cs.webp "MySQL C/S模型")
+![m1](images/mysql-cs.webp "MySQL C/S模型")
 
 两种连接方法：网络连接串和套接字文件
 
@@ -402,45 +402,45 @@ mysql -uroot -p -S /tmp/mysql.sock # -S可省略
 
 ### MySQL实例的构成 ###
 
-实例：mysqld守护进程 + master thread + task thread + 预分配内存。
+实例：mysqld守护进程 + master thread + task thread + 预分配内存。  
 
 ### MySQL中myslqd服务的结构 ###
 
-![m2](mysql-mysqld.webp "mysqld服务的结构")
+![m2](images/mysql-mysqld.webp "mysqld服务的结构")
 
-- **连接层**
-  - 1.提供连接协议：Socket和TCP/IP
-  - 2.提供验证：用户、密码，IP，SOCKET
-  - 3.派生一个专用的线程（接收SQL，返回结果），使用`show processlist;` 命令可查看连接的线程
+- **连接层**  
+  - 1.提供连接协议：Socket和TCP/IP  
+  - 2.提供验证：用户、密码，IP，SOCKET  
+  - 3.派生一个专用的线程（接收SQL，返回结果），使用`show processlist;` 命令可查看连接的线程  
 
-  >思考：
-  >使用维护模式找回密码时，启动命令使用了以下参数分别是什么意思？
-  >--skip-grant-tables : 不启动用户密码验证
-  >--skip-networking : 不启用TCP/IP连接
+  >思考：  
+  >使用维护模式找回密码时，启动命令使用了以下参数分别是什么意思？  
+  >--skip-grant-tables : 不启动用户密码验证  
+  >--skip-networking : 不启用TCP/IP连接  
 
 - **SQL层（在SQL优化方面至关重要）**
-  - 1.接收上层传递的SQL语句
-  - 2.语法验证模块：验证语句语法，是否满足SQL_MODE
-  - 3.语义检查：判断语句的类型（DDL,DML等）
-  - 4.权限检查：用户对库表的权限
-  - 5.解析器：对语句执行前,进行预处理，生成解析树(执行计划)，即生成多种执行方案
-  - 6.优化器：根据解析器得出的多种执行计划，进行判断，选择最优的执行计划（代价最低的，5.7以后是代价模型）
-      代价模型：资源（CPU  IO  MEM）的损耗评估性能好坏。
-  - 7.执行器：根据最有执行计划执行SQL语句，产生结果（在磁盘的哪个位置上）
-  - 8.提供查询缓存（默认是没开启的），会使用redis tair替代查询缓存功能
-  - 9.提供日志记录（具体见日志管理章节）：binlog，默认是没开启的
+  - 1.接收上层传递的SQL语句  
+  - 2.语法验证模块：验证语句语法，是否满足SQL_MODE  
+  - 3.语义检查：判断语句的类型（DDL,DML等）  
+  - 4.权限检查：用户对库表的权限  
+  - 5.解析器：在语句执行前,进行预处理，生成解析树(执行计划)，即生成多种执行方案  
+  - 6.优化器：根据解析器得出的多种执行计划，进行判断，选择最优的执行计划（代价最低的，5.7以后是代价模型）  
+      代价模型：资源（CPU  IO  MEM）的损耗评估性能好坏。  
+  - 7.执行器：根据最优执行计划执行SQL语句，产生结果（在磁盘的哪个位置上）  
+  - 8.提供查询缓存（默认是没开启的），一般会使用redis 来做查询缓存  
+  - 9.提供日志记录（具体见日志管理章节）：binlog，默认是没开启的  
 
-- **存储引擎层**
-  真正和磁盘打交道的层次，类似Linux中的文件系统。
-  根据SQL层提供的地址从磁盘上拿到数据，返回给SQL，结构化成表，再通过连接层返回给用户。
+- **存储引擎层**  
+  真正和磁盘打交道的层次，类似Linux中的文件系统。  
+  根据SQL层提供的地址从磁盘上拿到数据，返回给SQL，结构化成表，再通过连接层返回给用户。  
 
 ### 逻辑结构 ###
 
-![m3](mysql-jg.webp "逻辑结构")
+![m3](images/mysql-jg.webp "逻辑结构")
 
 ### 物理结构 ###
 
-![m4](mysql-physics.webp "物理结构")
+![m4](images/mysql-physics.webp "物理结构")
 
 *面试题：*
 说明MyISAM和InnoDB在存储方式上的异同？
@@ -536,6 +536,9 @@ mysql -uroot -p -S /tmp/mysql.sock # -S可省略
   # *.*                  ---->所有的库所有表
   # wordpress.*          ---->库里的所有表
   # wordpress.t1         ---->指定表
+  
+  # 授权后推荐更新下权限表
+  flush privileges;
   ```
 
   >命令 indentified by '密码' 可以修改用户密码，如不需要修改密码可以不用，另外MySQL8以前的版本可以使用 grant 命令同时创建用户+授权，8以后需要先创建用户再授权；
@@ -570,7 +573,10 @@ mysql -uroot -p -S /tmp/mysql.sock # -S可省略
   >重复（重新）授权会导致权限叠加，不会减少权限，想要减少权限只能通过回收授权；
 
   ```sql
+  # 回收delete权限，与grant类似
   revoke delete on *.* from 'lee'@'%';
+  # 推荐更新权限表
+  flush privileges
   ```
 
   **面试题：**
@@ -861,7 +867,7 @@ MySQL从5.7版本开始，加入了SQL_Mode 严格模式，开始遵守SQL标准
   varchar(n):可变长（按需分配存储空间），最多为65535个字符，推荐最长设为255（会单独占用一个字符来记录字符串长度，超过255后需要两个字节记录字符串长度）。
   enum('bj','tj','sh')：枚举类型，比较适合于取值范围固定的列，可以很大程度的优化索引结构（**禁存数字**，容易与索引产生错乱）。
 
-  ![string](string.webp)
+  ![string](images/string.webp)
 
 - 数值型
   常用的：
@@ -869,7 +875,7 @@ MySQL从5.7版本开始，加入了SQL_Mode 严格模式，开始遵守SQL标准
   int : 不需要知道长度，注意，最多存10位数字（比如不能用来存手机号）；
   bigint : 不需要知道长度；
 
-  ![int](int.webp)
+  ![int](images/int.webp)
 
 - 时间类型
   常用的：
@@ -877,11 +883,11 @@ MySQL从5.7版本开始，加入了SQL_Mode 严格模式，开始遵守SQL标准
   datetime : 范围为从 1000-01-01 00:00:00.000000 至 9999-12-31 23:59:59.999999。
   timestamp : 范围为从 1970-01-01 00:00:00.000000 至 2038-01-19 03:14:07.999999 且会受到时区的影响。
 
-  ![time](time.webp)
+  ![time](images/time.webp)
 
 - 二进制类型
 
-  ![binary](binary.webp)
+  ![binary](images/binary.webp)
 
 **面试题：**  
 
@@ -1034,7 +1040,7 @@ GIS
 
 ### B+树 ###
 
-![B+树](B+Tree.webp)
+![B+树](images/B+Tree.webp)
 
 B-Tree 普通B树
 B+Tree MySQL使用的
@@ -1252,7 +1258,7 @@ Extra         —— 额外的信息
   热备份
   自动故障恢复
   高可用方面的支持
-  ![innodb](innodb.webp)
+  ![innodb](images/innodb.webp)
 
 ### 引擎种类 ###
 
@@ -1535,7 +1541,7 @@ ibd：存储表的数据行和索引。　　
   CKPT: Checkpoint,检查点,就是将脏页刷写到磁盘的动作。  
   TXID: 事务号,InnoDB会为每一个事务生成一个事务号,伴随着整个事务。  
 
-  ![事务](shiw.png)
+  ![事务](images/shiw.png)
 
 - redo log  
   redo,顾名思义“重做日志”，是事务日志的一种。  
@@ -1621,7 +1627,7 @@ commit;
     Innodb_flush_method=fsync  
     对数据丢失有一定容忍度的业务可以使用高新能方式，比如zabbix等监控系统；  
 
-  ![双一标准](shuangyi.webp)
+  ![双一标准](images/shuangyi.webp)
 
 - redo相关的参数设置  
   innodb_log_buffer_size=16777216  
@@ -2501,9 +2507,9 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
     IO_Thread : 从库的IO线程——请求和接收binlog  
     SQL_Thread : 从库的SQL线程——回放日志  
 
-![主从结构](ms1.webp)
-![主从工作](ms2.webp)
-![主从工作](ms3.png)
+![主从结构](images/ms1.webp)
+![主从工作](images/ms2.webp)
+![主从工作](images/ms3.png)
 
 - 工作原理  
 
@@ -3127,7 +3133,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   purge_relay_logs            清除中继日志（不会阻塞SQL线程）
   ```
 
-![MHA架构图](mha.png)
+![MHA架构图](images/mha.png)
 
 ### MHA工作过程 ###
 
@@ -3356,7 +3362,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   >2、Centos 5.X安装 Atlas-XX.el5.x86_64.rpm，Centos 6.X安装Atlas-XX.el6.x86_64.rpm  
   >3、后端mysql版本应大于5.1，建议使用Mysql 5.6以上  
 
-![atlas](atlas.png)
+![atlas](images/atlas.png)
 
 - 安装配置  
 
@@ -3461,7 +3467,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
 ### MyCAT基础架构图 ###
 
-![mycat](mycat.png)
+![mycat](images/mycat.png)
 
 ### MyCAT基础架构准备 ###
 
@@ -3860,7 +3866,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
 ### MySQL分布式架构介绍 ###
 
-![分布式架构](fbs.png)
+![分布式架构](images/fbs.png)
 
 1. schema拆分及业务分库  
 2. 垂直拆分-分库分表  
@@ -4428,7 +4434,7 @@ ER分片
 
 - 优化效果和成本的评估  
 
-  ![优化](beast.png)
+  ![优化](images/beast.png)
 
 
 ### 优化工具的使用 ###
@@ -5170,7 +5176,7 @@ ER分片
 
 - 监控锁状态(看有没有锁等待)  
 
-  ![监控锁状态](lock.webp)
+  ![监控锁状态](images/lock.webp)
 
   ```sql
   SHOW  STATUS LIKE 'innodb_row_lock%';

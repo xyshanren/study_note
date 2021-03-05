@@ -697,6 +697,8 @@ mv ./etc/hadoop/mapred-site.xml.template ./etc/hadoop/mapred-site.xml
   </configuration>
   ```
 
+  >注意，如果使用MySQL8.0保存hive元数据的话，驱动需要使用 `com.mysql.jdbc.Driver`  
+
 ### 配置MySQL ###
 
 这里我们采用MySQL数据库保存Hive的元数据，而不是采用Hive自带的derby来存储元数据。
@@ -814,7 +816,7 @@ hadoop namenode -recover
 
   需要初始化元数据库：
 
-  进入hive安装目录（比如 /usr/local/hive），执行如下命令：`./bin/schematool -dbType mysql -initSchema`；
+  进入hive安装目录（比如 /usr/local/hive），执行如下命令：`./bin/schematool -dbType mysql -initSchema`  
 
 ## 附录 ##
 
