@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-06 22:24:34
+ * @LastEditTime: 2021-03-08 16:38:58
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -1586,7 +1586,7 @@ ibd：存储表的数据行和索引。　　
 RU  : 读未提交，可脏读，一般不允许出现。  
 **RC**  : read-committed 读已提交(不可重复读)，可以防止脏读，可能出现幻读。  
 **RR**  : repeatable-read 解决了不可重复读问题和"幻读"现象。是利用undo的快照技术和GAP(间隙锁)+NextLock(下键锁)解决的。  
-SR  : 可串行化,可以防止死锁,但是并发事务性能较差  
+SR  : 可串行化,可以防止死锁,但是并发事务性能较差。  
 **注意**:  
 在RC级别下，可以减轻GAP+NextLock锁的问题，但是会出现幻读现象；  
 一般在为了读一致性会在正常select后添加for update语句（享受RR级别的待遇）；  
@@ -1601,7 +1601,7 @@ commit;
 - 幻读  
   RC 模式下会出现幻读现象；  
   当一个事务在按范围条件更新数据时，另一个事务在该事务完成前插入了一个满足更新条件的数据并提交，则该事务提交后会发现新加入的数据未更新；  
-  在 RR 模式下 GAP(间隙锁)+NextLock(下键锁) 会阻塞掉上述插入操作；
+  在 RR 模式下 GAP(间隙锁)+NextLock(下键锁) 会阻塞掉上述插入操作；  
 
 ### InnoDB核心参数 ###
 
@@ -1617,9 +1617,9 @@ commit;
     默认的是 `fsync`  
     生产中建议配置成 `innodb_flush_method=O_DIRECT` ，由于该参数是只读参数，只能在初始化(my.cnf)配置中设置。  
     参数值说明：  
-    O_DIRECT  : 数据缓冲区写磁盘,不走 OS buffer(日志刷写磁盘走 os buffer)  
-    fsync     : 日志和数据缓冲区写磁盘,都走OS buffer  
-    O_DSYNC   : 日志缓冲区写磁盘,不走 OS buffer  
+    O_DIRECT  : 数据缓冲区刷写磁盘,不走 OS buffer(日志刷写磁盘走 os buffer)  
+    fsync     : 日志和数据缓冲区刷写磁盘,都走OS buffer  
+    O_DSYNC   : 日志缓冲区刷写磁盘,不走 OS buffer  
   - 使用建议  
     **最高安全模式**：  
     innodb_flush_log_at_trx_commit=1  
@@ -1672,19 +1672,19 @@ commit;
     记录了数据库中的变更类操作（包括 DDL DCL DML）。  
     - DDL 和 DCL 语句  
       直接记录执行的语句；  
-    - DML (insert update delete)
+    - DML (insert update delete)  
       前提：只记录已经提交的事务；  
       记录格式：  
       ROW       : RBR 行记录模式，记录的是行的变化；日志量大，但严谨。  
       STATEMENT : SBR 语句记录模式，记录操作语句（类似DDL）；日质量少，可读性较强；对于函数类的操作恢复时会造成错误。  
       MIXED     : MBR 混合记录模式，由MySQL决定；  
-      查看参数配置命令 `select @@binlog_format;`
-      >5.7 版本默认是 RBR ，是企业建议模式。
+      查看参数配置命令 `select @@binlog_format;`  
+      >5.7 版本默认是 RBR ，是企业建议模式。  
 
     - 二进制日志事件(event)  
       二进制日志的最小记录单元；  
-      对于DDL DCL ，一个瑜伽就是一个event ；  
-      对于 DML 语句，值记录已提交的事务；  
+      对于DDL DCL ，一个语句就是一个event ；  
+      对于 DML 语句，只记录已提交的事务；  
       例如：  
       |事件|position号|position号|
       |:-:|:-:|:-:|
@@ -1709,7 +1709,7 @@ commit;
 
   >**注意**：生产要求日志与数据分开（磁盘）存放。  
 
-- 二进制日志的查看
+- 二进制日志的查看  
   - 查看二进制日志所在位置  
     `show variables like '%log_bin%';`  
   - 查看使用的二进制文件  
@@ -1721,7 +1721,7 @@ commit;
     查看二进制日志事件 `show binlog events in 'mysql-bin.000001';`  
     字段说明：  
     |字段名|说明|
-    |:-:|:-:|
+    |:-|:-|
     |log_name|日志名|
     |pos|事件开始的position|
     |event_type|事件类型|
@@ -1782,9 +1782,9 @@ commit;
     `SET @@SESSION.GTID_NEXT= 'ANONYMOUS'`  
     GTID是对于一个已提交事务的编号，并且是一个全局唯一的编号  
     它的官方定义如下：  
-    GTID = source_id ：transaction_id  
+    GTID = source_uuid ：transaction_id  
     7E11FA47-31CA-19E1-9E56-C43AA21293967:29  
-    **说明**：
+    **说明**：  
     DDL DCL 一条语句（事件）就是一个事务，占一个GTID号  
     DML 一个完整的事务(begin -> commit)，占一个GTID号  
   - 开启GTID  
@@ -1834,7 +1834,7 @@ commit;
     PURGE BINARY LOGS TO 'mysql-bin.000010';
     ```
 
-    >注意: 不要手工 rm binlog文件  
+    >注意: 不要手动 rm binlog文件  
 
     如果binlog文件被rm后怎么启动数据库？  
     1.my.cnf binlog关闭掉,启动数据库  
@@ -1913,10 +1913,10 @@ commit;
 
 - 逻辑备份工具  
   基于SQL语句进行备份  
-  myslqdump(mdp) mysqlbinlog  
+  myslqdump(MDP) mysqlbinlog  
 - 物理备份工具  
   基于磁盘数据文件备份  
-  xtrabackup(XBK) ：percona 第三方工具  
+  xtrabackup(XBK) ：percona 第三方工具（是服务器端工具，不能远程备份）  
   MySQL Enterprise Backup(MEB) 官方工具  
 
 ### 逻辑备份和物理备份的比较 ###
@@ -1984,14 +1984,14 @@ commit;
     # 补充:
     # 1.常规备份是要加 --set-gtid-purged=OFF,解决备份时的警告
     mysqldump -uroot -p123 -A  --set-gtid-purged=OFF  >/backup/full.sql
-    # 2.构建主从时,做的备份,不需要加这个参数使用ON或不加
+    # 2.构建主从时,做的备份,不需要加这个参数，使用ON或不加
     mysqldump -uroot -p123 -A  --set-gtid-purged=ON >/backup/full.sql
     ```
 
   **-B db1 db2 db3 备份多个单库**  
   说明：生产中需要备份，生产相关的库和mysql库  
   例子2 :  
-  `mysqldump -B mysql test --set-gtid-purged=OFF >/data/backup/b.sql`  
+  `mysqldump -uroot -p -B mysql test --set-gtid-purged=OFF >/data/backup/b.sql`  
   **备份单个或多个表**  
   例子3: 备份world数据库下的city,country表(库名后不跟表名就是备份所有表)  
   `mysqldump -uroot -p world city country >/data/backup/bak1.sql`  
@@ -2054,8 +2054,8 @@ commit;
   5.截取从备份时刻到下午两点前的binlog进行恢复  
   6.校验数据一致性  
   7.撤维护页，恢复生产  
-- 处理结果
-  1.记过30-40分钟的处理，业务恢复  
+- 处理结果  
+  1.经过30-40分钟的处理，业务恢复  
   2.评估此次故障处理的合理性和实用性  
 - 案例模拟  
   - 1.进行全备  
@@ -2088,7 +2088,7 @@ commit;
     systemctl start mysqld
     ```
 
-  - 5.进行全备  
+  - 5.进行全备恢复  
 
     ```sql
     -- 临时关闭binlog记录
@@ -2182,7 +2182,7 @@ commit;
 - innobackupex使用  
   - 全备  
     使用命令（指定备份路径） `innobackupex --user=root --password=123 /data/bak`  
-    自主定制备份路径名 `innobackupex --user=root --password=123 --no-timestamp /data/bak/full_$(date +%F)`
+    自主定制备份路径名 `innobackupex --user=root --password=123 --no-timestamp /data/bak/full_$(date +%F)`  
     还可以指定socket文件 `innobackupex --user=root --password=123456 -S /tmp/mysql.sock /data/bak/`  
     还可以指定使用的配置文件 `innobackupex --defaults-file=/etc/my.cnf --user=root --password=123456 /data/bak/`  
     注意，该工具依赖于/etc/my.cnf文件，如果配置文件不在默认位置，可以使用以上命令指定。  
@@ -2425,7 +2425,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   ```sql
   -- 创建用户
   grant replication slave on *.* to repl@'localhost' identified by '123';
-  grant replication slave on *.* to repl@'192.168.3.%' identified by '123';
+  grant replication slave on *.* to repl@'192.168.56.%' identified by '123';
   ```
 
 - 进行主库数据备份  
@@ -2435,7 +2435,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   mysqldump -S /data/3307/mysql.sock -A --master-data=2 -R -E --triggers --single-transaction > /tmp/full.sql
   ```
 
-- 恢复数据到从裤(3308)  
+- 恢复数据到从库(3308)  
 
   ```sql
   -- 先进入3308的MySQL
@@ -2519,7 +2519,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   1.从库执行 change master to 语句，会将主库信息(ip pot user password binlog position等)写入到 master.info 中。
   1.从库执行 start slave 语句，会启动IO线程和SQL线程。
   3.IO_T 读取 master.info 文件，获取主库信息。
-  4.IO_T连接主库，主库会生成一个准备binlog DUMP线程来响应IO_T。
+  4.IO_T连接主库，主库会生成一个binlog DUMP线程来响应IO_T。
   5.IO_T根据 master.info 记录的binlog文件名和position号，向DUMP_T请求最新的日志。
   6.DUMP_T检查主库的binlog日志，如果有新的，截取并传送给IO_T。
   7.IO_T将收到日志后存储到TCP/IP 缓存中，并立即返回ACK给主库 ，主库工作完成。
@@ -2611,14 +2611,14 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
       4.网络不通  
       5.防火墙  
       **处理思路**：使用命令 `mysql -u -p -h -P` 手工连接主库看具体的报错进行分析解决。  
-      **处理步骤**：以上如果是主库信息的问题，需要重写master.info ,使用命令如下命令：  
+      **处理步骤**：以上如果是主库信息的问题，需要重写 `master.info` ,使用命令如下命令：  
 
-    ```sql
-    stop slave;
-    reset slave all;
-    change master to ...;
-    start slave;
-    ```
+      ```sql
+      stop slave;
+      reset slave all;
+      change master to ...;
+      start slave;
+      ```
 
     - 请求新的binlog 状态为 no  
       **原因一般是**：  
@@ -2630,7 +2630,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
       >在从库的错误日志里也会有详细的记录。
 
   - SQL线程故障  
-    SQL线程会读取和更新 relay-log.info ，读取 relay-log 文件并执行日志。  
+    SQL线程会读取和更新 `relay-log.info` ，读取 relay-log 文件并执行日志。  
     **原因一般是**：
     1.如果以上文件损坏会导致SQL线程的故障 —— 这种情况比较少见，出现了只能重新构建主从。  
     2.relay-log中的SQL语句执行不成功 —— 主从数据库版本差异较大（少见），或者主从配置参数不一致（例如 sql_mode），或者主从数据不一致。  
@@ -2652,12 +2652,12 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
     - 主库方面  
       1.日志写入不及时 —— 双一标准之 sync_binlog=1 事务提交就写入binlog , 5.6以后默认开启。  
       2.主库并发业务较高导致dump线程传送不及时 —— 提高硬件，或进行业务拆分（分布式架构）。  
-      3.从库太多 —— 可以加一个中间库(级联)，只负责复制，并且可以利用 blackhok 存储引擎只生成binlog不进行SQL回放的特点，减少消耗。(较少见)  
+      3.从库太多 —— 可以加一个中间库(级联)，只负责复制，并且可以利用 blackhok 存储引擎只生成binlog不存储数据的特点，减少消耗。(较少见)  
       4.主库发生了大事务，会阻塞后续的所有的事务的运行 —— 将事务进行拆分。  
       5.对于传统 replication，主库事务可以并行，但传送时是串行，当主库 TPS 很高时，会产生比较大的延时。  
       >处理这种并发事务多导致延时的问题，使用 group commit.  
       >5.6开始加入了GTID，在复制时可以将原来串行的传输模式变成并行的。  
-      >出了GTID支持外，还需要双一保证(5.7默认开启双一)。  
+      >除了GTID支持外，还需要双一保证(5.7默认开启双一)。  
 
     - 从库方面  
       SQL线程  
@@ -2929,7 +2929,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
     start slave;
     ```
 
-    可以写成到脚本中，例如：  
+    可以写到脚本中，例如：  
 
     ```shell
     mysql -e "change master to master_host='192.168.56.112',master_user='repl',master_password='123',MASTER_AUTO_POSITION=1;"
