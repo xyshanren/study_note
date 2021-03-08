@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-15 09:38:47
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-17 10:07:09
+ * @LastEditTime: 2021-03-09 06:21:09
  * @Descriptiong: 
 -->
 
@@ -125,7 +125,7 @@ hive>
   - 前台启动
     使用命令 `hiveserver2` ，启动后会多一个进程，该方式需要占用一个会话窗口。
 
-    ![1](jps.png "进程")
+    ![1](images/jps.png "进程")
 
   - 后台启动
 
@@ -182,7 +182,7 @@ hive>
   - 在使用beeline跑hive查询时候会产生很多无用的INFO日志
     如下图：
 
-    ![2](log.png "查询日志")
+    ![2](images/log.png "查询日志")
 
     **解决方法**
     a) 在使用 beeline 时加入以下设置即可

@@ -130,7 +130,7 @@
 
   如果配置正确的话，`$JAVA_HOME/bin/java -version` 会输出 java 的版本信息，且和 `java -version` 的输出结果一样，如下图所示：
 
-  ![输出结果](image-20200613085600054.png)
+  ![输出结果](images/image-20200613085600054.png)
 
 ### 安装MySQL ###
 

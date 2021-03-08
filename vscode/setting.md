@@ -1,8 +1,8 @@
 <!--
  * @Author: your name
  * @Date: 2019-12-02 11:06:37
- * @LastEditTime: 2019-12-02 14:20:15
- * @LastEditors: Please set LastEditors
+ * @LastEditTime: 2021-03-09 06:29:32
+ * @LastEditors: 李逍遥
  * @Description: In User Settings Edit
  * @FilePath: \GitRepository\study_note\vscode\setting.md
  -->
@@ -16,7 +16,7 @@
 ## 插件 ##
 
 - Icon Fonts
-![动图](IconFonts.gif)
+![动图](images/IconFonts.gif)
   这是一个能够在项目中添加图标字体的插件。该插件支持超过 20 个热门的图标集，包括了 Font Awesome、Ionicons、Glyphicons 和 Material Design Icons。  
 
   >插件地址：<https://marketplace.visualstudio.com/items?itemName=idleberg.icon-fonts>  
@@ -29,17 +29,17 @@
   - 从剪贴板上传图片到图床  
     Windows/Unix: Ctrl + Alt + u
     OsX: Cmd + Opt + u
-    ![剪切板](PicGo.gif)
+    ![剪切板](images/PicGo.gif)
 
   - 从文件夹上传图片到图床  
     Windows/Unix: Ctrl + Alt + e  
     OsX: Cmd + Opt + e  
-    ![上传](PicGo1.gif)
+    ![上传](images/PicGo1.gif)
 
   - 从输入框中输入图片名称上传到图床  
     Windows/Unix: Ctrl + Alt + o  
     OsX: Cmd + Opt + 0  
-    ![输入](PicGo2.gif)
+    ![输入](images/PicGo2.gif)
 
   >插件地址：<https://marketplace.visualstudio.com/items?itemName=Spades.vs-picgo>  
   >GitHub地址：<https://github.com/PicGo>  

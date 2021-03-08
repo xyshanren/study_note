@@ -85,8 +85,8 @@ console.log(num);
 ### 8. 插入图片
 
  1. 插入本地图片
-    ![small](small.jpg '笑脸')
-    ![笑脸](small.jpg)
+    ![small](images/small.jpg '笑脸')
+    ![笑脸](images/small.jpg)
  2. 插入网络图片
     ![rollbot.png](https://i.loli.net/2019/10/18/si38LmGjAUtdF6T.png '笑脸')
 

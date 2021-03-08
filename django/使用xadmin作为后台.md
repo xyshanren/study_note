@@ -1,8 +1,8 @@
 <!--
  * @Author: 李逍遥
  * @Date: 2019-12-16 16:55:25
- * @LastEditTime : 2019-12-22 20:01:05
- * @LastEditors  : 李逍遥
+ * @LastEditTime: 2021-03-09 06:15:48
+ * @LastEditors: 李逍遥
  * @Description: In User Settings Edit
  * @FilePath: \study_note\django\使用xadmin作为后台.md
  -->
@@ -64,7 +64,7 @@
 - 安装xadmin  
   使用命令`pip install git+git://github.com/sshwsfc/xadmin.git@django2`  
   该命令会安装以下依赖包：  
-  ![依赖包](pg1.png)
+  ![依赖包](images/pg1.png)
 
 - 卸载xadmin  
   使用命令`pip uninstall xadmin`卸载xadmin，依赖包会保留下来；
@@ -72,7 +72,7 @@
 - 配置项目
   - 将源码[下载](https://github.com/vip68/xadmin_bugfix)到本地
   - 将根目录下的*xadmin*复制到项目的extra_apps(自定义)目录下  
-    ![xadmin](xadminDir.png)
+    ![xadmin](images/xadminDir.png)
   - 将extra_apps目录设置为 Resource Root，右键 Mark Directory as -> Resource Root(在pycharm中操作)
   - 在settings.py中添加应用
 
@@ -117,7 +117,7 @@
     ```
 
     成功：  
-    ![成功](suc.png)
+    ![成功](images/suc.png)
 
   - 在settings.py中设置中文显示
 
@@ -128,4 +128,4 @@
     ```
 
   - 大功告成，启动项目，登录<http://127.0.0.1:8000/xadmin>  
-    ![登录](login.png)
+    ![登录](images/login.png)

@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-13 11:34:25
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-13 12:57:08
+ * @LastEditTime: 2021-03-09 06:12:50
  * @Descriptiong: 
 -->
 
@@ -35,17 +35,17 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
 - 获取帮助文档
   输入命令 `m`
 
-    ![fdisk1](fdisk1.png "进入fdisk程序")
+    ![fdisk1](images/fdisk1.png "进入fdisk程序")
 
 - 添加一个分区
   输入命令 `n` ，选择 `p` ，这里不能选择 `e` ，不然后面的操作会受阻，其它操作用默认的，直接按回车就行了
 
-    ![fdisk2](fdisk2.png "添加分区")
+    ![fdisk2](images/fdisk2.png "添加分区")
 
 - 将新分区类型修改为 `Linux LVM`
   输入命令 `t` 来改变磁盘的system id，输入8e，输入 `w` 保存并退出
 
-    ![fdisk3](fdisk3.png)
+    ![fdisk3](images/fdisk3.png)
 
 - 使用 `reboot` 命令重启系统
 
@@ -57,7 +57,7 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo fdisk -l
     ```
 
-    ![fdisk4](fdisk4.png "查看分区")
+    ![fdisk4](images/fdisk4.png "查看分区")
 
 - 将分区格式化为ext4格式
 
@@ -65,7 +65,7 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo mkfs.ext4 /dev/sda3
     ```
 
-    ![mkfs](mkfs.png "格式化分区")
+    ![mkfs](images/mkfs.png "格式化分区")
 
 - 创建新的物理分区
 
@@ -73,7 +73,7 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo pvcreate /dev/sda3
     ```
 
-    ![pvcreate](pvcreate.png "新建分区")
+    ![pvcreate](images/pvcreate.png "新建分区")
 
 - 查看虚拟卷
   `pvdisplay` 查看物理卷, `lvdisplay` 查看逻辑卷
@@ -82,7 +82,7 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo vgdisplay
     ```
 
-    ![vgdisplay](vgdisplay.png "查看虚拟卷")
+    ![vgdisplay](images/vgdisplay.png "查看虚拟卷")
 
 - 扩展到卷组
 
@@ -96,7 +96,7 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo lvdisplay
     ```
 
-    ![lvdisplay](lvdisplay.png "查看逻辑卷")
+    ![lvdisplay](images/lvdisplay.png "查看逻辑卷")
 
 - 扩展逻辑卷空间
 
@@ -115,4 +115,4 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
     sudo df -h
     ```
 
-    ![last](last.png)
+    ![last](images/last.png)

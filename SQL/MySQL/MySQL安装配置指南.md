@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2020-12-29 16:13:04
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-04 12:57:27
+ * @LastEditTime: 2021-03-09 06:08:42
  * @Descriptiong: 
 -->
 
@@ -30,7 +30,7 @@
 - 下载打包的安装文件  
   如下图：
 
-![下载](MySQLDownload.png)
+![下载](images/MySQLDownload.png)
 
 > 也可以下载MSI安装包直接下一步安装就行，这里进行静默安装的讲解。
 
