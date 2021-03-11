@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-08 16:38:58
+ * @LastEditTime: 2021-03-09 14:09:26
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -3081,7 +3081,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   - 一主一从  
   - 一主多从  
   - 级联主从  
-以上架构在大部分中小型企业中还在用，还有一部分用了RDS。  
+    以上架构在大部分中小型企业中还在用，还有一部分用了RDS。  
   - 双主(互为主从)  
     中型企业，在高可用架构(MMM)或分布式架构(Mycat,DBLE)中。  
   - 环状(几乎无人用)  
@@ -3401,8 +3401,8 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   ps -ef |grep proxy
   ```
 
-  >proxy-backend-addresses 写节点，配置为vip地址  
-  >pwds 生产上一般填管理员用户和应用端用户  
+  >proxy-backend-addresses 写节点，配置为vip地址。  
+  >pwds 生产上一般填管理员用户和应用端用户，未配置的用户访问不了。  
 
 - 功能测试  
 
