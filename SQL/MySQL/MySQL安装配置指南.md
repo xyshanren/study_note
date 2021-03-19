@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2020-12-29 16:13:04
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-09 06:08:42
+ * @LastEditTime: 2021-03-19 14:53:03
  * @Descriptiong: 
 -->
 
@@ -12,10 +12,14 @@
   - [在Windows上安装和配置](#在windows上安装和配置)
     - [下载](#下载)
     - [配置](#配置)
-  - [在CentOS上安装](#在centos上安装)
+  - [在CentOS上安装(yum)](#在centos上安装yum)
     - [删除已安装的MySQL](#删除已安装的mysql)
     - [添加MySQL Yum Repository](#添加mysql-yum-repository)
     - [安装MySQL](#安装mysql)
+  - [二进制安装部署](#二进制安装部署)
+    - [准备安装包](#准备安装包)
+    - [准备环境](#准备环境)
+    - [启动数据库](#启动数据库)
   - [单独安装MySQL客户端](#单独安装mysql客户端)
 
 ## 在Windows上安装和配置 ##
@@ -109,7 +113,7 @@ select host, user from user;
 
   >注：5.8版本废弃了password()函数，用update语句修改密码已经不适用了
 
-## 在CentOS上安装 ##
+## 在CentOS上安装(yum) ##
 
 > MySQL也是在root用户下进行安装的；
 >
@@ -278,6 +282,186 @@ select host, user from user;
   ```shell
   systemctl enable mysqld
   systemctl daemon-reload
+  ```
+
+## 二进制安装部署 ##
+
+>以Linux通用版(generic)为例  
+
+### 准备安装包 ###
+
+下载并上传二进制文件或者直接使用 wget 命令下载，解压并移动到指定目录。  
+这里使用 `mysql-5.7.26-linux-glibc2.12-x86_64.tar.gz` 版本，命令如下：  
+
+```shell
+# 解压
+tar xf mysql-5.7.26-linux-glibc2.12-x86_64.tar.gz
+# 创建目录
+mkdir /application
+# 将MySQL文件移动并重命名
+mv mysql-5.7.26-linux-glibc2.12-x86_64 /application/mysql
+```
+
+### 准备环境 ###
+
+- 处理原始环境
+
+  ```shell
+  # 查看是否安装 mariadb
+  rpm -qa|grep mariadb
+  # 如果有，使用下面的命令卸载掉相关软件，否则会初始化失败
+  rpm -e mariadb
+  # 如果因为被依赖而无法卸载的话，可以使用以下命令进行卸载
+  yum remove mariadb-libs-xxxx -y
+  # 也可以加上 --nodeps 不检查依赖关系强制卸载
+  rpm -e --nodeps mariadb
+  ```
+
+- 配置环境变量
+
+  ```shell
+  # 配置环境变量
+  vim /etc/profile
+  # 在最后一行添加下面的代码
+  export PATH=/application/mysql/bin:$PATH
+  # 让配置生效
+  source /etc/profile
+  # 查看MySQL版本(确认环境变量是否生效)
+  mysql -V
+  ```
+
+- 挂载数据盘
+
+  ```shell
+  # 创建数据路径
+  # 在虚拟机上可以添加一块新磁盘模拟数据盘
+  # 查看磁盘情况
+  fdisk -l
+  # 可看到新加的虚拟硬盘，一般名为：Disk /dev/sdb
+  # 格式化
+  mkfs.xfs /dev/sdb
+  # 创建目录
+  mkdir /data
+  # 挂载
+  # 查看磁盘的UUID
+  blkid
+  # 在配置文件中将磁盘挂载到 data 目录下
+  vim /etc/fstab
+  # 添加以下代码
+  UUID=xxxxxx-xxxx-xxxx-xxxx-xxxxxx /data xfs defaults 0 0
+  # 自动挂载
+  mount -a
+  # 查看是否挂载成功
+  df -h
+  # 未挂载成功的话，也可以使用以下方法
+  cd /sys/class/scsi_host
+  echo "---" > host0/scan # 接口扫描新加磁盘
+  ```
+
+- 创建用户并授权
+
+  ```shell
+  # 创建管理MySQL的用户（不需要有登录权限）
+  useradd -s /sbin/nologin mysql
+  # 授权
+  mkdir /data/mysql/data -p
+  chown -R mysql.mysql /application/*
+  chown -R mysql.mysql /data
+  ```
+
+- 初始化数据（创建系统数据）
+
+  ```shell
+  # 5.6的命令是：/application/mysql/scripts/mysql_install_db
+  # 先进入MySQL安装目录
+  cd /application/mysql/
+  # 初始化
+  mysqld --initialize --user=mysql --basedir=/application/mysql --datadir=/data/mysql/data
+  # 如果初始化报错缺少 libaio 的话，需安装 libaio-devel
+  yum install -y libaio-devel
+  # 初始化后会生成一个临时密码，如下：
+  #### ..... A temporary password is generated for root@localhost: xxxxxx
+  ```
+
+  >参数说明：
+  >initialize
+  >1.对密码复杂度进行定制，包含四种字符且达到12位；
+  >2.给root@localhost 用户设置临时密码；
+  >initialize-insecure : 无限制无临时密码，生产中往往使用该方式初始化。
+
+- 配置文件
+
+  ```shell
+  # 准备配置文件
+  # 在 /etc/my.cnf 中写入以下项(最基本的配置项)
+  cat >/etc/my.cnf <<EOF
+  [mysqld]
+  user=mysql
+  basedir=/application/mysql
+  datadir=/data/mysql/data
+  socket=/tmp/mysql.sock
+  server_id=6
+  port=3306
+  [mysql]
+  socket=/tmp/mysql.sock
+  EOF
+  ```
+
+### 启动数据库 ###
+
+- 1.使用 sys-v
+
+  ```shell
+  # 进入命令所在目录
+  cd /application/mysql/support-files/
+  # 启动
+  ./mysql.server start
+
+  # 还可以将 mysql.server 命令放到init.d中管理
+  ## 将命令拷贝到 init.d
+  cp /application/mysql/support-files/mysql.server /etc/init.d/mysqld
+  ## 启动
+  service mysqld start
+  # 同 /etc/init.d/mysql start
+  # 实际上是启动了 mysql.server 然后调用了 /application/mysql/bin/mysqld_safe(脚本)  然后启动了 mysqld
+
+  # 以上还包括 start|stop|restart|status 等
+  ```
+
+- 2.使用systemd管理MySQL服务（5.7的新特性）
+
+  ```shell
+  # 将MySQL服务加入systemd
+  cat >/etc/systemd/system/mysqld.service <<EOF
+  [Unit]
+  Description=MySQL Server
+  Documentation=man:mysqld(7)
+  Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+  After=network.target
+  After=syslog.target
+  [Install]
+  WantedBy=multi-user.target
+  [Service]
+  User=mysql
+  Group=mysql
+  ExecStart=/application/mysql/bin/mysqld --defaults-file=/etc/my.cnf
+  LimitNOFILE = 5000
+  EOF
+
+  # 启动
+  systemctl start mysqld
+
+  # 设置开机启动
+  systemctl enable mysqld
+
+  ## 判断服务是否启动
+  netstat -lnp|grep mysqld
+  netstat -lnp|grep 3306
+  ps -ef |grep mysqld
+  systemctl status mysqld
+  ss -tulpn|grep mysqld
+  ss -tulpn|grep 3306
+  lsof -i :3306
   ```
 
 ## 单独安装MySQL客户端 ##
