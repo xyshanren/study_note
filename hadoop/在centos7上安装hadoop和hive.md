@@ -64,7 +64,7 @@
 
 ### 创建hadoop用户 ###
 
-- 使用以下命令创建hadoop用户
+- 使用以下命令创建hadoop用户(可登陆的)
 
   ```shell
   useradd -m hadoop -s /bin/bash
