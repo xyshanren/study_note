@@ -315,7 +315,7 @@
 
   根据“环境”中列的镜像地址选择hadoop的版本，使用wget命令进行下载，保存到指定目录（比如 ~/download）；
 
-  使用以下命令讲Hadoop安装至 /user/local 中：
+  使用以下命令将Hadoop安装至 /user/local 中：
 
   ```shell
   sudo tar -zxf ~/download/hadoop-2.10.0.tar.gz -C /usr/local    # 解压到/usr/local中
