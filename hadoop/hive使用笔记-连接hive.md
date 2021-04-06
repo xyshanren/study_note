@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-15 09:38:47
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-09 06:21:09
+ * @LastEditTime: 2021-04-06 10:55:52
  * @Descriptiong: 
 -->
 
@@ -204,7 +204,7 @@ hive>
     </property>
     ```
 
-![3](beeline.png)
+![3](images/beeline.png)
 如此便可以做 hive 操作了
 
 ### beeline支持的操作 ###
