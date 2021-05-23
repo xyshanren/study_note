@@ -253,13 +253,13 @@
   #### ..... A temporary password is generated for root@localhost: xxxxxx
   ```
 
-  >参数说明：
-  >initialize
-  >1.对密码复杂度进行定制，包含四种字符且达到12位；
-  >2.给root@localhost 用户设置临时密码；
-  >initialize-insecure : 无限制无临时密码，生产中往往使用该方式初始化。
+  >参数说明：  
+  >initialize  
+  >1.对密码复杂度进行定制，包含四种字符且达到12位；  
+  >2.给root@localhost 用户设置临时密码；  
+  >initialize-insecure : 无限制无临时密码，生产中往往使用该方式初始化。  
 
-- 配置文件
+- 配置文件  
 
   ```shell
   # 准备配置文件
