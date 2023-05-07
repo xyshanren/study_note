@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
  * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-23 11:39:41
+ * @LastEditTime: 2021-08-14 08:07:43
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -371,7 +371,7 @@ d.配置文件 `/etc/my.cnf` 参数错误；
   # 登录MySQL
   mysql
   # 修改密码
-  alter user root@'localhost' indentified by 'pwd';
+  alter user root@'localhost' identified by 'pwd';
   # 上面的命令会失败，刷新后再修改就成功了
   flush privileges;
   ```
@@ -530,7 +530,7 @@ mysql -uroot -p -S /tmp/mysql.sock # -S可省略
   # 示例
   grant  ALL on wordpress.* to wordpress@'10.0.0.%' identified by '123456';
   # 解析
-  grant 权限(insert,update,...) on 范围(库) to 用户 indentified by '密码';
+  grant 权限(insert,update,...) on 范围(库) to 用户 identified by '密码';
 
   # 范围
   # *.*                  ---->所有的库所有表
