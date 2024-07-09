@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-13 11:34:25
  * @LastEditors: 学海
- * @LastEditTime: 2024-07-09 12:31:53
+ * @LastEditTime: 2024-07-09 22:00:27
  * @Descriptiong: 
 -->
 
@@ -26,6 +26,15 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
 ## 启动虚拟机，将新增空间挂载到系统盘 ##
 
 ### 使用 fdisk 程序创建分区 ###
+
+- 查看磁盘  
+  如果是分配过的磁盘会有黄框中的分区信息，需要对 /dev/sdc 进行分区。  
+
+    ```shell
+    fdisk -l
+    ```
+
+    ![fdisk-l](images/fdisk-l.png)
 
 - 进入 `fdisk`
 
