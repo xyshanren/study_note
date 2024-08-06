@@ -2,7 +2,7 @@
  * @Autor: 李逍遥
  * @Date: 2021-02-13 11:34:25
  * @LastEditors: 学海
- * @LastEditTime: 2024-07-09 22:00:27
+ * @LastEditTime: 2024-08-06 14:58:13
  * @Descriptiong: 
 -->
 
@@ -19,8 +19,8 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
 ```
 
 >注意：
->1.需要在命令行中先将目录切换到VirtualBox的安装目录，即 `VBoxManage.exe` 所在的目录；
->2.resize 后的参数是要分配的空间大小，以M为单位；
+>1.需要在命令行中先将目录切换到VirtualBox的安装目录，即 `VBoxManage.exe` 所在的目录；  
+>2.resize 后的参数是要分配的空间大小，以M为单位；  
 >3.也可以在VirtualBox的设置中直接添加虚拟磁盘，可以参考该博文，<https://blog.csdn.net/weixin_51722520/article/details/129763328>，后续磁盘的挂载步骤是一样的，挂载到一个新目录请参考该博文，挂载到系统目录请继续按照以下文档操作。
 
 ## 启动虚拟机，将新增空间挂载到系统盘 ##
