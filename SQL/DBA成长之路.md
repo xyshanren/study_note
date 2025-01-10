@@ -1,8 +1,8 @@
 <!--
  * @Autor: 李逍遥
  * @Date: 2021-02-05 17:23:39
- * @LastEditors: 李逍遥
- * @LastEditTime: 2021-08-14 08:07:43
+ * @LastEditors: 学海
+ * @LastEditTime: 2025-01-10 16:03:01
  * @Descriptiong: DBA的学习指南
 -->
 
@@ -38,7 +38,7 @@
     - [列属性和约束](#列属性和约束)
     - [SQL语句应用](#sql语句应用)
   - [6.SQL高级应用](#6sql高级应用)
-  - [7.Information_schema获取元数据](#7information_schema获取元数据)
+  - [7.Information\_schema获取元数据](#7information_schema获取元数据)
   - [8.索引](#8索引)
     - [测试环境准备](#测试环境准备)
     - [索引的作用](#索引的作用)
@@ -79,7 +79,7 @@
     - [逻辑备份工具-mysqldump](#逻辑备份工具-mysqldump)
     - [备份恢复案例1(mysqldump+binlog)](#备份恢复案例1mysqldumpbinlog)
     - [XBK(xtrabackup)的应用](#xbkxtrabackup的应用)
-    - [备份恢复案例2(XBK full_inc_binlog)](#备份恢复案例2xbk-full_inc_binlog)
+    - [备份恢复案例2(XBK full\_inc\_binlog)](#备份恢复案例2xbk-full_inc_binlog)
     - [MySQL数据迁移](#mysql数据迁移)
   - [13.主从复制及架构演变](#13主从复制及架构演变)
     - [主从复制简介](#主从复制简介)
@@ -90,7 +90,7 @@
     - [过滤复制](#过滤复制)
     - [半同步复制-了解](#半同步复制-了解)
     - [GTID复制](#gtid复制)
-  - [14.传统的高可用及读写分离（MHA&Atlas）](#14传统的高可用及读写分离mhaatlas)
+  - [14.传统的高可用及读写分离（MHA\&Atlas）](#14传统的高可用及读写分离mhaatlas)
     - [高可用MHA](#高可用mha)
     - [主从复制架构演变](#主从复制架构演变)
     - [MHA架构模型](#mha架构模型)
@@ -102,7 +102,7 @@
     - [MySQL读写分离Atlas](#mysql读写分离atlas)
     - [Atlas基本管理](#atlas基本管理)
     - [其他读写分离产品扩展](#其他读写分离产品扩展)
-  - [15.传统分布式架构设计与实现-扩展（Mycat-->DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
+  - [15.传统分布式架构设计与实现-扩展（Mycat--\>DBLE,DRDS）](#15传统分布式架构设计与实现-扩展mycat--dbledrds)
     - [MyCAT基础架构图](#mycat基础架构图)
     - [MyCAT基础架构准备](#mycat基础架构准备)
     - [MySQL分布式架构介绍](#mysql分布式架构介绍)
@@ -394,9 +394,9 @@ d.配置文件 `/etc/my.cnf` 参数错误；
 两种连接方法：网络连接串和套接字文件
 
 ```shell
-#TCP/IP方式（远程、本地）：
+[[TCP/IP方式（远程、本地）：]]
 mysql -uroot -p -h xx.x.x.xx -P3306
-#Socket方式(仅本地)：
+[[Socket方式]](仅本地)：
 mysql -uroot -p -S /tmp/mysql.sock # -S可省略
 ```
 
@@ -2987,7 +2987,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
   - 准备配置文件  
 
-    ```shell
+```shell
     # 主库db01：
     cat > /etc/my.cnf <<EOF
     [mysqld]
@@ -3044,13 +3044,12 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
     [mysql]
     prompt=db03 [\\d]>
     EOF
-    ```
+```
 
   - 初始化数据（所有节点）  
-
-    ```shell
-    mysqld --initialize-insecure --user=mysql --basedir=/application/mysql  --datadir=/data/mysql/data
-    ```
+```shell
+mysqld --initialize-insecure --user=mysql --basedir=/application/mysql  --datadir=/data/mysql/data
+```
 
   - 启动数据库  
     `/etc/init.d/mysqld start`
@@ -3168,7 +3167,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
   - 配置文件准备(从库db03)  
 
-    ```shell
+```shell
     # 创建配置文件目录
     mkdir -p /etc/mha
     # 创建日志目录
@@ -3195,7 +3194,7 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
     hostname=192.168.56.114
     port=3306
     EOF
-    ```
+```
 
   - 状态检查  
 
@@ -3432,9 +3431,9 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
 
 ### MHA的邮件提醒 ###
 
-- 1. 参数：  
+- 1.参数：  
   `report_script=/usr/local/bin/send_report`  
-- 2. 准备邮件脚本  
+- 2.准备邮件脚本  
   send_report  
   (1)将发邮件的脚本 send_report.pl 模板修改以下变量为自己的，上传到/usr/local/bin/中，并赋予执行权限。  
 
@@ -3456,12 +3455,13 @@ innobackupex --user=root --password=123 --defaults-file=/etc/my.cnf --no-timesta
   report_script=/usr/local/bin/send_report
   ```
 
-- 3. 停止MHA  
+- 3.停止MHA  
   `masterha_stop --conf=/etc/mha/app1.cnf`  
-- 4. 开启MHA  
+
+- 4.开启MHA  
   `nohup masterha_manager --conf=/etc/mha/app1.cnf --remove_dead_master_conf --ignore_last_failover < /dev/null > /var/log/mha/app1/manager.log 2>&1 &`  
 
-- 5. 关闭主库,看警告邮件  
+- 5.关闭主库,看警告邮件  
 
 ### Binlog Server ###
 
