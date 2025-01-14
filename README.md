@@ -1,10 +1,13 @@
-<!--
- * @Autor: 学海
- * @Date: 2023-05-07 21:37:36
- * @LastEditors: 学海
- * @LastEditTime: 2024-01-15 20:28:10
- * @Descriptiong: 
--->
+---
+title: 程序员的学习笔记
+author:
+  - 守一
+created: 2023-05-07
+description: 整理下自己的学习笔记
+tags:
+  - readme
+---
+
 # 程序员的学习笔记
 
 #### 介绍
@@ -40,7 +43,7 @@ markdown格式的文件，使用vscode的md插件即可方便阅读或导出为p
 
 #### 友情支持
 
-以上笔记会精选部分发布到微信公众号上，有兴趣的可以关注公众号：xiaoy_Lab
+以上笔记会精选部分发布到微信公众号上，有兴趣的可以关注公众号：qiusuo_LAB
 ![xiaoy_Lab](wx-xiaoy_Lab.png "xiaoy_Lab")
 
 码字不易，如果您觉得这个笔记（文章）对您有所帮助，可以点个赞，如有余力也请赞赏支持下。
