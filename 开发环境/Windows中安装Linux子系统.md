@@ -1,10 +1,13 @@
-<!--
- * @Autor: 逍遥山人
- * @Date: 2019-12-26 09:04:44
- * @LastEditors  : 逍遥山人
- * @LastEditTime : 2019-12-26 09:57:22
- * @Descriptiong: 
- -->
+---
+title: 在Windows中安装Linux子系统
+author:
+  - 守一
+created: 2019-12-26
+description: 在Windows中安装Linux子系统
+tags:
+  - 虚拟机环境
+  - Linux
+---
 
 # Windows中安装Linux子系统的详细步骤 #
 

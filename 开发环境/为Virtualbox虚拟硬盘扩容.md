@@ -1,10 +1,13 @@
-<!--
- * @Autor: 李逍遥
- * @Date: 2021-02-13 11:34:25
- * @LastEditors: 学海
- * @LastEditTime: 2024-08-06 14:58:13
- * @Descriptiong: 
--->
+---
+title: 为Virtualbox虚拟硬盘扩容
+author:
+  - 守一
+created: 2021-02-13
+description: 在Oracle VM VirtualBox中，分配给虚拟机的磁盘太大不够用的时候，可以参考本文档进行扩容
+tags:
+  - 虚拟机环境
+  - VirtualBox
+---
 
 # 给VirtualBox的centos7虚拟机扩容 #
 
@@ -21,7 +24,8 @@ VBoxManage modifyhd "D:\work\workspace\VirtualBox\mysql_train\mysql_train.vdi" -
 >注意：
 >1.需要在命令行中先将目录切换到VirtualBox的安装目录，即 `VBoxManage.exe` 所在的目录；  
 >2.resize 后的参数是要分配的空间大小，以M为单位；  
->3.也可以在VirtualBox的设置中直接添加虚拟磁盘，可以参考该博文，<https://blog.csdn.net/weixin_51722520/article/details/129763328>，后续磁盘的挂载步骤是一样的，挂载到一个新目录请参考该博文，挂载到系统目录请继续按照以下文档操作。
+>3.也可以在VirtualBox的设置中直接添加虚拟磁盘，可以参考该博文：[在Oracle VM VirtualBox中添加磁盘，并挂载磁盘_virtualbox挂载硬盘-CSDN博客](https://blog.csdn.net/weixin_51722520/article/details/129763328)，后续磁盘的挂载步骤是一样的，挂载到一个新目录请参考该博文，挂载到系统目录请继续按照以下文档操作。
+>4.如果是动态分配的虚拟磁盘的话可以直接修改虚拟磁盘大小，可以参考该文档：[如何增加动态分配磁盘的 Virtualbox 磁盘大小](https://cn.linux-terminal.com/?p=3787)
 
 ## 启动虚拟机，将新增空间挂载到系统盘 ##
 

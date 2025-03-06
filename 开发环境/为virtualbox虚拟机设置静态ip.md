@@ -1,10 +1,12 @@
-<!--
- * @Autor: 李逍遥
- * @Date: 2021-03-02 05:26:07
- * @LastEditors: 李逍遥
- * @LastEditTime: 2021-04-05 14:48:40
- * @Descriptiong: 
--->
+---
+title: 为Oracle VirtualBox中的虚拟机设置静态IP
+author:
+  - 守一
+created: 2021-03-02
+description: 为Oracle VirtualBox中的虚拟机设置静态ip
+tags:
+  - VirtualBox
+---
 
 # 目录 #
 
