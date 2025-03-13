@@ -1,5 +1,5 @@
 ---
-title: "#Obsidian"
+title: 从零开始学习Obsidian
 source: https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzA3MzA5MTk2MA==&action=getalbum&album_id=3189343285316665351&from_itemidx=1&from_msgid=2649687898&scene=173&subscene=&sessionid=svr_42271f07c3b&enterid=1736494283&from_msgid=2649687898&from_itemidx=1&count=3&nolastread=1#wechat_redirect
 author:
   - "[[拉登Dony]]"
