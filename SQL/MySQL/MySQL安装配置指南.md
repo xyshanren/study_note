@@ -1,10 +1,12 @@
-<!--
- * @Autor: 李逍遥
- * @Date: 2020-12-29 16:13:04
- * @LastEditors: 李逍遥
- * @LastEditTime: 2021-03-19 14:53:03
- * @Descriptiong: 
--->
+---
+title: MySQL的安装配置笔记
+author:
+  - 守一
+created: 2020-12-29
+description: MySQL的部署配置笔记
+tags:
+  - mysql
+---
 
 # MySQL服务的安装和配置 #
 

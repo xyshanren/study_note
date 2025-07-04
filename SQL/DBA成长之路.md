@@ -1,10 +1,12 @@
-<!--
- * @Autor: 李逍遥
- * @Date: 2021-02-05 17:23:39
- * @LastEditors: 学海
- * @LastEditTime: 2025-01-10 16:03:01
- * @Descriptiong: DBA的学习指南
--->
+---
+title: DBA的成长之路
+author:
+  - 守一
+created: 2021-02-05
+description: DBA的学习笔记，目前主要是MySQL部分，后续还会有其他数据库。
+tags:
+  - mysql
+---
 
 # 目录 #
 

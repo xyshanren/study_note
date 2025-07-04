@@ -1,10 +1,12 @@
-<!--
- * @Autor: 李逍遥
- * @Date: 2021-01-12 17:29:30
- * @LastEditors: 李逍遥
- * @LastEditTime: 2021-02-04 18:18:19
- * @Descriptiong: 
--->
+---
+title: 使用atlas代理实现MySQL的读写分离
+author:
+  - 守一
+created: 2021-01-12
+description: 使用atlas实现MySQL读写分离的部署笔记
+tags:
+  - mysql
+---
 
 # 使用atlas代理实现MySQL的读写分离 #
 
