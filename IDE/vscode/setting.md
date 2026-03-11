@@ -1,8 +1,8 @@
 <!--
  * @Author: your name
  * @Date: 2019-12-02 11:06:37
- * @LastEditTime: 2021-03-09 06:29:32
- * @LastEditors: 李逍遥
+ * @LastEditTime: 2025-11-25 12:18:45
+ * @LastEditors: 守一 lixy2017@aliyun.com
  * @Description: In User Settings Edit
  * @FilePath: \GitRepository\study_note\vscode\setting.md
  -->
@@ -45,3 +45,10 @@
   >GitHub地址：<https://github.com/PicGo>  
   >PicGo产品介绍：<https://sspai.com/post/52527>  
   >PicGo产品文档：<https://picgo.github.io/PicGo-Doc/zh/guide/>  
+
+
+## 配置python环境 ##
+
+Windows:Ctrl+Shift+P
+用下面的命令可以创建一个本工程的虚拟环境
+python.createEnvironment
