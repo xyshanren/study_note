@@ -25,7 +25,7 @@ tags:
   - [网络模式设置](#网络模式设置)
     - [1.设置网卡1](#1设置网卡1)
     - [2.设置网卡2](#2设置网卡2)
-    - [3.设置宿主机的VirtualBox Host-Only Network网络](#3设置宿主机的virtualbox-host-only-network网络)
+    - [3.VirtualBox 网络配置（宿主机操作）](#3virtualbox-网络配置宿主机操作)
   - [虚拟机配置](#虚拟机配置)
     - [编辑enp0s3的配置](#编辑enp0s3的配置)
     - [设置网关](#设置网关)
@@ -74,25 +74,35 @@ Net Adress transform 网络地址转换，共享主机的IP地址。
 
 ## 网络模式设置 ##
 
-### 1.设置网卡1 ###
+### 1.VirtualBox 网络配置（宿主机操作） ###
+#### 创建Host-Only 网络
+1. 打开 VirtualBox → 管理 → 工具 → 主机网络管理器
+2. 点击 创建 按钮，生成一个 Host-Only 网络（默认名称：VirtualBox Host-Only Ethernet Adapter）
+3. 配置网络属性（建议）：
+   • IPv4 地址：192.168.56.1
+   • IPv4 网络掩码：255.255.255.0
+
+4. 禁用 DHCP 服务器（重要，确保 IP 固定）
+
+#### 查看宿主机中网络配置
+按 `Win + R`，输入 `ncpa.cpl`，回车，查看名为 **"VirtualBox Host-Only Ethernet Adapter"​** 的网络连接，如下图：
+
+![宿主机设置](images/vb_3.png)
+
+### 2.设置网卡1 ###
 
 打开虚拟机的设置，找到网络设置，启动网卡1，选择链接方式为 host-only模式。  
 >桥接模式可以保证宿主机和虚拟机相互网络访问。  
 
 ![网卡1](images/vb_1.png)
 
-### 2.设置网卡2 ###
+### 3.设置网卡2 ###
 
 打开虚拟机的设置，找到网络设置，启动网卡2，连接方式选择网络地址转换(NAT)。  
 >网络地址转换模式可以保证虚拟机可以联网。  
 
 ![网卡2](images/vb_2.png)
 
-### 3.设置宿主机的VirtualBox Host-Only Network网络 ###
-
-设置宿主机的ip，子网掩码，默认网关  
-
-![宿主机设置](images/vb_3.png)
 
 ## 虚拟机配置 ##
 
@@ -170,3 +180,179 @@ ping www.baidu.com
 ping 192.168.56.1
 ping 192.168.56.111
 ```
+
+## Ubuntu虚拟机内配置静态 IP
+
+>Ubuntu中设置网卡是网卡1设置为NAT，网卡2设置为Host-Only
+
+### 1. 查看网络接口名称
+
+启动虚拟机，打开终端执行：
+
+```
+ip addr show
+```
+
+通常显示为：
+
+- NAT 网卡：`enp0s3`或类似
+    
+- Host-Only 网卡：`enp0s8`或类似
+    
+
+### 2. 配置 Netplan（Ubuntu 17.10+）
+
+编辑 Netplan 配置文件：
+
+```
+sudo nano /etc/netplan/00-installer-config.yaml
+```
+
+添加以下配置（根据实际接口名调整）：
+
+```
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    # NAT 网卡 - 用于访问外网（保持 DHCP）
+    enp0s3:
+      dhcp4: true
+      optional: true
+    
+    # Host-Only 网卡 - 固定 IP 用于 SSH 连接
+    enp0s8:
+      dhcp4: false
+      addresses: [192.168.56.100/24]  # 固定 IP，需在 192.168.56.2-254 范围内
+      # 注意：Host-Only 网络通常不需要网关和 DNS
+      # 如需访问外网，网关应指向 NAT 网卡的网关（如 10.0.2.1）
+      # gateway4: 10.0.2.1
+      nameservers:
+        addresses: [8.8.8.8, 114.114.114.114]
+```
+
+### 3. 应用网络配置
+
+```
+sudo netplan apply
+```
+
+### 4. 验证配置
+
+```
+# 查看 IP 配置
+ip addr show enp0s8
+
+# 测试宿主机连通性
+ping 192.168.56.1  # 宿主机 Host-Only 网卡 IP
+
+# 测试外网连通性
+ping baidu.com
+```
+
+## 安装和配置 SSH 服务
+
+### 1. 安装 OpenSSH 服务器
+
+```
+sudo apt update
+sudo apt install openssh-server -y
+```
+
+### 2. 启动并启用 SSH 服务
+
+```
+sudo systemctl start ssh
+sudo systemctl enable ssh
+```
+
+### 3. 检查 SSH 服务状态
+
+```
+sudo systemctl status ssh
+```
+
+### 4. 配置防火墙（如有）
+
+```
+# 如果启用了 UFW 防火墙
+sudo ufw allow ssh
+sudo ufw enable
+```
+
+## 从宿主机 SSH 连接虚拟机
+
+### 1. 确认虚拟机 IP
+
+在虚拟机中执行：
+
+```
+ip addr show enp0s8 | grep inet
+```
+
+应显示：`192.168.56.100/24`
+
+### 2. 从宿主机连接
+
+在宿主机终端执行：
+
+```
+ssh username@192.168.56.100
+```
+
+- `username`：Ubuntu 虚拟机的用户名
+    
+- 输入密码即可连接
+    
+
+## 备选方案：桥接模式（如需与局域网其他设备互通）
+
+如果希望虚拟机与宿主机在同一局域网，可使用桥接模式：
+
+### 1. VirtualBox 配置
+
+- 网卡 1：桥接网卡
+    
+- 选择宿主机的物理网卡
+    
+
+### 2. Ubuntu 静态 IP 配置
+
+```
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp0s3:
+      dhcp4: false
+      addresses: [192.168.1.100/24]  # 与宿主机同一网段的固定 IP
+      gateway4: 192.168.1.1          # 路由器网关
+      nameservers:
+        addresses: [192.168.1.1, 8.8.8.8]
+```
+
+## 故障排除
+
+|问题|解决方案|
+|---|---|
+|无法 ping 通宿主机|检查 VirtualBox Host-Only 网络配置，确认 IP 在同一网段|
+|SSH 连接被拒绝|检查 SSH 服务是否运行：`sudo systemctl status ssh`|
+|网络配置不生效|重启网络服务：`sudo netplan apply`或重启虚拟机|
+|双网卡冲突|确保 Host-Only 网卡不设置网关，避免路由冲突|
+
+## 配置验证清单
+
+1. ✅ VirtualBox Host-Only 网络已创建且 DHCP 已禁用
+    
+2. ✅ 虚拟机配置了 NAT + Host-Only 双网卡
+    
+3. ✅ Ubuntu 中 Host-Only 网卡配置了静态 IP（192.168.56.100）
+    
+4. ✅ SSH 服务已安装并运行
+    
+5. ✅ 宿主机能 ping 通虚拟机（192.168.56.100）
+    
+6. ✅ 虚拟机可通过 NAT 访问外网
+    
+
+这种双网卡方案既能保证虚拟机有固定 IP 便于 SSH 连接，又能通过 NAT 访问互联网，是最稳定可靠的配置方式。
