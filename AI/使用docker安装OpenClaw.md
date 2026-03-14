@@ -180,9 +180,12 @@ sudo chmod +x /usr/local/bin/docker-compose
 | 轩辕镜像     | `https://docker.xuanyuan.me`   | 国内专线，稳定高速，推荐首选 |
 | 阿里云镜像    | `https://docker.1ms.run`       | 阿里云提供，企业级稳定    |
 | DaoCloud | `https://docker.m.daocloud.io` | 老牌容器服务商        |
->国内镜像目前都没有免费使用的了，轩辕镜像需要注册用户并买流量，阿里的镜像加速限制较大。
+>轩辕镜像需要注册用户并买流量，阿里的镜像加速限制较大。
 >[配置官方镜像加速器加速拉取Docker Hub镜像-容器镜像服务-阿里云](https://help.aliyun.com/zh/acr/user-guide/accelerate-the-pulls-of-docker-official-images)
 >[Docker 镜像免费公共测试访问入口 | 轩辕镜像免费版](https://docker.xuanyuan.me/)
+
+#### 一键配置毫秒镜像
+[1ms-helper - 毫秒镜像配置助手 - 毫秒镜像 - 迷你文档](https://mdoc.cc/mliev/1ms/v1.0.0/71)
 
 ### 3. **OpenClaw Docker快速启动**
 ```bash
@@ -276,7 +279,8 @@ npm uninstall -g openclaw
 - 你的环境完全无法使用容器技术
 
 >注意：
->1.使用docker desktop最好不使用29.x版本，历史版本：[Docker toolbox镜像-Docker toolbox镜像下载安装-开源镜像站-阿里云](https://developer.aliyun.com/mirror/docker-toolbox?spm=a2c6h.13651102.0.0.57e31b11wTgDa4)
+>1.使用docker desktop最好不使用29.x版本，历史版本：[Docker CE镜像-Docker CE镜像下载安装-开源镜像站-阿里云](https://developer.aliyun.com/mirror/docker-ce?spm=a2c6h.13651102.0.0.57e31b11wBe9zu)
 >2.可以使用国内镜像：[1panel/openclaw 镜像说明 | Docker OpenClaw 镜像说明与拉取方式](https://xuanyuan.cloud/zh/r/1panel/openclaw)
 >3.如需使用梯子请参照：
 >[Clash Verge 下载与配置教程 | Clash下载站](https://clash.download/clash-verge) 及 https://qiaomimi.cloud/
+
