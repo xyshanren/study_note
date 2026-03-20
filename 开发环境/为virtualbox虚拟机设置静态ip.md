@@ -169,9 +169,54 @@ ONBOOT=no                                   # 是否开机启动， 要想网卡
 
 ### 重启网络 ###
 
-centos7可以使用命令 `systemctl restart network` 重启网络  
+centos7使用命令 `systemctl restart network` 重启网络。  
+AnoLisOS使用命令 `systemctl restart NetworkManager` 重启网络  
 >注意，这里是虚拟机，最好还是直接重启。  
 
+### AnoLisOS的NAT网卡（enp0s8）可能会有异常
+
+如下：接口状态为 `UP`，**但没有分配任何 IPv4 地址**（只有 IPv6 的链路本地地址 `fe80::...`）
+```shell
+ip addr show
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 08:00:27:ad:87:e2 brd ff:ff:ff:ff:ff:ff
+```
+
+正常的是这样的：
+```shell
+ip addr show
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 08:00:27:ad:87:e2 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.3.15/24 brd 10.0.3.255 scope global dynamic noprefixroute enp0s8
+       valid_lft 86391sec preferred_lft 86391sec
+    inet6 fe80::3ea:884:ad62:e3b7/64 scope link noprefixroute
+       valid_lft forever preferred_lft forever
+```
+
+**解决方法：
+#### 使用 `nmcli`（NetworkManager 命令行工具）激活连接
+
+1. **查看现有的网络连接**，找到与 `enp0s8`设备关联的那个：
+	```shell
+	nmcli connection show
+	```
+
+	在输出列表中，查找 `NAME`和 `DEVICE`列。如 `enp0s3`的连接（设备为 `enp0s3`）。`enp0s8`对应的连接可能处于“未连接”状态，或者其 `DEVICE`列为空、`--`或显示为 `enp0s8`。
+
+2. **为 `enp0s8`激活连接**。
+	- **如果存在一个连接，其 `DEVICE`列为 `enp0s8`**，可以直接激活它：
+		```shell
+		nmcli connection up <连接的NAME>
+		```
+
+	- **如果 `enp0s8`没有关联的连接**，需要先创建一个。通常，NetworkManager 会自动为网络接口创建连接。可以尝试让 NetworkManager 重新发现并连接设备：
+		```shell
+		nmcli device connect enp0s8
+		```
+	  这条命令会尝试为 `enp0s8`设备创建并激活一个使用 DHCP 的默认连接。
+
+3. **验证结果
+	再次运行 `ip addr show enp0s8`。如果成功，您应该能看到它获取到了一个 `10.0.x.x/24`网段的 IPv4 地址。
 ### 测试 ###
 
 ```shell
