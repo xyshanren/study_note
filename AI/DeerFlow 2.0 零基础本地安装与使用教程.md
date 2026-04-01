@@ -1236,6 +1236,213 @@ def select_model(task: str, context: dict) -> str:
 
 ---
 
+### 5.7 华为云 ModelArts MaaS OpenAI 兼容 API 配置
+
+华为云 ModelArts 提供了 OpenAI 兼容接口，可以直接对接 DeerFlow。
+
+#### 5.7.1 接口信息
+
+| 参数 | 值 |
+|------|----|
+| `base_url` | `https://api.modelarts-maas.com/openai/v1` |
+| 认证方式 | Bearer Token（MaaS API Key） |
+| 区域限制 | **仅支持西南-贵阳一** |
+| 文档地址 | https://support.huaweicloud.com/usermanual-maas-modelarts/maas-modelarts-0084.html |
+
+#### 5.7.2 可用模型（部分）
+
+| 模型名称 | 特点 |
+|---------|------|
+| `DeepSeek-V3` | 通用能力强，性价比高 |
+| `Kimi-K2` | 长上下文，适合文档分析 |
+| `Qwen3-72B` | 中文优化，推理强 |
+| `DeepSeek-R1` | 深度推理专用 |
+
+#### 5.7.3 获取 API Key
+
+1. 登录华为云控制台 → **ModelArts** → **魔坊（MaaS）**
+2. 进入 **API 密钥管理**，创建新密钥
+3. 复制保存（只显示一次）
+
+#### 5.7.4 配置示例
+
+**`.env` 配置：**
+```env
+HUAWEICLOUD_MAAS_API_KEY=your-maas-api-key-here
+```
+
+**`config.yaml` 配置：**
+```yaml
+models:
+  - name: huaweicloud-deepseek-v3
+    display_name: DeepSeek V3（华为云 MaaS）
+    use: langchain_openai:ChatOpenAI
+    model: DeepSeek-V3
+    api_key: $HUAWEICLOUD_MAAS_API_KEY
+    base_url: https://api.modelarts-maas.com/openai/v1
+    max_tokens: 8192
+    temperature: 0.7
+
+  - name: huaweicloud-qwen3
+    display_name: Qwen3 72B（华为云 MaaS）
+    use: langchain_openai:ChatOpenAI
+    model: Qwen3-72B
+    api_key: $HUAWEICLOUD_MAAS_API_KEY
+    base_url: https://api.modelarts-maas.com/openai/v1
+    max_tokens: 8192
+
+default_model: huaweicloud-deepseek-v3
+```
+
+**curl 测试：**
+```bash
+curl -X POST "https://api.modelarts-maas.com/openai/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_MAAS_API_KEY" \
+  -d '{
+    "model": "DeepSeek-V3",
+    "messages": [{"role": "user", "content": "你好"}],
+    "stream": false
+  }'
+```
+
+---
+
+### 5.8 GitCode AI 模型配置
+
+> ⚠️ GitCode AI Hub（https://aihub.gitcode.com）目前主要是模型托管社区，其实时推理 API 尚未完全开放。推荐通过**硅基流动**调用 GitCode 上托管的开源模型。
+
+#### 5.8.1 硅基流动调用 GitCode 开源模型
+
+硅基流动（SiliconFlow）托管了大量 GitCode 上的开源模型，配置方法：
+
+**`.env` 配置：**
+```env
+SILICONFLOW_API_KEY=your-siliconflow-key
+```
+
+**`config.yaml` 配置：**
+```yaml
+models:
+  # Qwen 系列（GitCode 开源）
+  - name: sf-qwen2.5-72b
+    display_name: Qwen 2.5 72B（硅基流动）
+    use: langchain_openai:ChatOpenAI
+    model: Qwen/Qwen2.5-72B-Instruct
+    api_key: $SILICONFLOW_API_KEY
+    base_url: https://api.siliconflow.cn/v1
+    max_tokens: 8192
+
+  # DeepSeek 系列
+  - name: sf-deepseek-v3
+    display_name: DeepSeek V3（硅基流动）
+    use: langchain_openai:ChatOpenAI
+    model: deepseek-ai/DeepSeek-V3
+    api_key: $SILICONFLOW_API_KEY
+    base_url: https://api.siliconflow.cn/v1
+    max_tokens: 8192
+
+default_model: sf-deepseek-v3
+```
+
+---
+
+### 5.9 config.yaml 与 .env 配合指南
+
+#### 5.9.1 分工原则
+
+| 文件 | 放什么 | 为什么 |
+|------|--------|--------|
+| `config.yaml` | 模型的**结构配置**（base_url、模型名、参数等） | 非敏感信息，可以提交到 Git |
+| `.env` | **API Key 等密钥** | 敏感信息，绝对不能提交到 Git |
+
+`.env` 里的变量在 `config.yaml` 中用 `$变量名` 引用，DeerFlow 启动时自动读取替换。
+
+#### 5.9.2 完整配置示例（多平台组合）
+
+**`.env` 文件：**
+```env
+# ===== 华为云 =====
+HUAWEICLOUD_MAAS_API_KEY=sk-maas-xxxxxxxx
+
+# ===== 硅基流动 =====
+SILICONFLOW_API_KEY=sk-sfxxxxxxxx
+
+# ===== DeepSeek 官方 =====
+DEEPSEEK_API_KEY=sk-deepseek-xxxxxxxx
+
+# ===== Ollama 本地（不需要 Key）=====
+# 无需配置
+```
+
+**`config.yaml` 文件：**
+```yaml
+models:
+  # ---- 华为云 MaaS ----
+  - name: hw-deepseek-v3
+    display_name: DeepSeek V3（华为云）
+    use: langchain_openai:ChatOpenAI
+    model: DeepSeek-V3
+    api_key: $HUAWEICLOUD_MAAS_API_KEY
+    base_url: https://api.modelarts-maas.com/openai/v1
+
+  # ---- 硅基流动 ----
+  - name: sf-qwen2.5
+    display_name: Qwen 2.5 72B（硅基流动）
+    use: langchain_openai:ChatOpenAI
+    model: Qwen/Qwen2.5-72B-Instruct
+    api_key: $SILICONFLOW_API_KEY
+    base_url: https://api.siliconflow.cn/v1
+
+  # ---- DeepSeek 官方 ----
+  - name: deepseek-chat
+    display_name: DeepSeek V3（官方）
+    use: langchain_deepseek:ChatDeepSeek
+    model: deepseek-chat
+    api_key: $DEEPSEEK_API_KEY
+
+  # ---- Ollama 本地（不需要 .env 变量）----
+  - name: qwen2.5:7b
+    display_name: Qwen 2.5 7B（本地）
+    use: langchain_openai:ChatOpenAI
+    model: qwen2.5:7b
+    api_key: ollama                          # 占位符，不从 .env 读取
+    base_url: http://localhost:11434/v1
+
+default_model: deepseek-chat
+```
+
+#### 5.9.3 关键规则速记
+
+```
+.env 里：        变量名=密钥值
+config.yaml 里： api_key: $变量名
+
+✅ Ollama 本地模型例外：api_key 直接写 "ollama"
+✅ 同一平台的多个模型可以共用同一个 .env 变量
+✅ .env 已被 .gitignore 排除，安全
+```
+
+---
+
+### 5.10 国内主流平台速查表
+
+| 平台            | `base_url`                                          | 免费额度 | 推荐指数  |
+| ------------- | --------------------------------------------------- | ---- | ----- |
+| **DeepSeek**  | `https://api.deepseek.com/v1`                       | 新用户有 | ⭐⭐⭐⭐⭐ |
+| **硅基流动**      | `https://api.siliconflow.cn/v1`                     | 每日免费 | ⭐⭐⭐⭐⭐ |
+| **阿里百炼**      | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 新用户有 | ⭐⭐⭐⭐  |
+| **腾讯混元**      | `https://api.hunyuan.cloud.tencent.com/v1`          | 有免费  | ⭐⭐⭐⭐  |
+| **华为云 MaaS**  | `https://api.modelarts-maas.com/openai/v1`          | 有试用  | ⭐⭐⭐   |
+| **智谱 GLM**    | `https://open.bigmodel.cn/api/paas/v4`              | 有免费  | ⭐⭐⭐⭐  |
+| **Ollama 本地** | `http://localhost:11434/v1`                         | 完全免费 | ⭐⭐⭐⭐⭐ |
+
+---
+
+> 💡 **配置建议**：初学者从 DeepSeek 官方或硅基流动开始（配置简单，有免费额度），进阶用户可以尝试华为云 MaaS 或 Ollama 本地部署。
+
+---
+
 ## 6. 启动 DeerFlow
 
 ### 6.1 Windows / Linux Docker 方式
