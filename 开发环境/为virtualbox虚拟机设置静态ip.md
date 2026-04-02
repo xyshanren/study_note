@@ -309,6 +309,9 @@ sudo apt install openssh-server -y
 ```
 sudo systemctl start ssh
 sudo systemctl enable ssh
+# 或者
+sudo systemctl enable sshd
+sudo systemctl status sshd
 ```
 
 ### 3. 检查 SSH 服务状态
