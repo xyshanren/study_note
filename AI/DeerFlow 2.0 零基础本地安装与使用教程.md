@@ -391,7 +391,7 @@ models:
     use: langchain_openai:ChatOpenAI
     model: atmogit-model-name
     api_key: $OPENAI_API_KEY
-    base_url: https://api.atmogit.ai/v1
+    base_url: https://api-ai.gitcode.com/v1
     max_tokens: 4096
 
 default_model: atmogit-model
@@ -498,13 +498,13 @@ ollama --version
 
 Ollama 从模型库（ollama.com/library）下载模型。常用模型推荐：
 
-| 模型 | 参数量 | 显存要求 | 适用场景 | 下载命令 |
-|------|--------|----------|---------|---------|
-| **Llama 3.2** | 3B / 70B | 4GB / 48GB | 日常对话、编程 | `ollama pull llama3.2` |
-| **Qwen2.5** | 7B / 14B / 32B | 8GB / 16GB / 24GB | 中文对话（推荐） | `ollama pull qwen2.5:7b` |
-| **Mistral** | 7B | 8GB | 英文为主 | `ollama pull mistral` |
-| **DeepSeek R1** | 7B / 14B / 70B | 8GB / 16GB / 48GB | 推理能力强 | `ollama pull deepseek-r1:7b` |
-| **Codellama** | 7B / 34B | 8GB / 24GB | 代码生成（推荐） | `ollama pull codellama:7b` |
+| 模型              | 参数量            | 显存要求              | 适用场景     | 下载命令                         |
+| --------------- | -------------- | ----------------- | -------- | ---------------------------- |
+| **Llama 3.2**   | 3B / 70B       | 4GB / 48GB        | 日常对话、编程  | `ollama pull llama3.2`       |
+| **Qwen2.5**     | 7B / 14B / 32B | 8GB / 16GB / 24GB | 中文对话（推荐） | `ollama pull qwen2.5:7b`     |
+| **Mistral**     | 7B             | 8GB               | 英文为主     | `ollama pull mistral`        |
+| **DeepSeek R1** | 7B / 14B / 70B | 8GB / 16GB / 48GB | 推理能力强    | `ollama pull deepseek-r1:7b` |
+| **Codellama**   | 7B / 34B       | 8GB / 24GB        | 代码生成（推荐） | `ollama pull codellama:7b`   |
 
 > 💡 **显存参考**：RTX 3060（12GB）推荐 7B 模型；RTX 4090（24GB）可跑 14B~32B 模型；70B 模型需要专业级显卡（如 A100 80GB）。
 
