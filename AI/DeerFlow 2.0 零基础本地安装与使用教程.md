@@ -1,4 +1,4 @@
-> 更新时间：2026-03-30 | 版本：DeerFlow 2.0 | 新增：Linux 双路径安装 + 多平台 API 配置 + 复杂任务示例
+> 更新时间：2026-04-03 | 版本：DeerFlow 2.0 | 新增：Linux 双路径安装 + 多平台 API 配置 + 复杂任务示例 + Docker 官方 make 命令
 
 ---
 
@@ -123,16 +123,17 @@ sudo usermod -aG docker $USER
 git clone https://github.com/bytedance/deer-flow.git
 cd deer-flow
 
-# 复制配置文件
-cp .env.example .env
-cp config.example.yaml config.yaml
+# Step 1：生成配置文件
+make config
 
-# 配置 API Key（见 §5）
+# Step 2：配置 API Key（见 §5）
 vim .env
 
-# 一键启动
-cd docker
-docker compose --env-file ../.env up -d --build
+# Step 3：首次运行，拉取 sandbox 镜像（约 1-3 分钟）
+make docker-init
+
+# Step 4：启动开发模式（支持热更新）
+make docker-start
 
 # 检查状态
 docker compose ps
@@ -1447,39 +1448,28 @@ config.yaml 里： api_key: $变量名
 
 ### 6.1 Windows / Linux Docker 方式
 
+#### 开发模式（推荐日常使用）
+
 ```powershell
 # 进入 deer-flow 目录
 cd deer-flow
 
-# 首次启动：拉取镜像并构建（约 5-15 分钟）
-make docker-start
+# 首次运行：拉取 sandbox 镜像
+make docker-init
 
-# 后续启动（无需重新拉取）
+# 启动开发服务（支持热更新，根据 config.yaml 自动判断 sandbox 模式）
 make docker-start
 ```
 
-如果 `make` 命令不可用：
+#### 生产模式（服务器部署）
 
 ```bash
-cd docker
-docker compose --env-file ../.env up -d --build
+# 构建镜像并启动全部服务
+make up
+
+# 停止并移除容器
+make down
 ```
-
-### 6.2 检查启动状态
-
-```bash
-docker compose ps
-```
-
-看到以下服务状态都是 **Up** 就成功了：
-
-| 服务 | 状态 |
-|------|------|
-| nginx | Up |
-| frontend | Up |
-| gateway | Up |
-| langgraph | Up |
-| postgres | Up |
 
 ### 6.3 访问
 
@@ -1555,6 +1545,7 @@ DeerFlow 会自动：
 > ⚠️ **注意**：图像生成需要配置图像生成 API（如 OpenAI DALL-E、Stable Diffusion、FLUX 等）。DeerFlow 2.0 支持 MCP 工具扩展，可接入图像生成服务。
 
 **MCP 图像生成工具配置示例（config.yaml）：**
+
 ```yaml
 mcp_tools:
   - name: image_generation
@@ -1568,6 +1559,7 @@ mcp_tools:
 ### 8.3 🎬 任务三：生成水墨风格太极拳视频
 
 **任务描述：**
+
 ```
 帮我制作一个 30 秒的水墨风格太极拳教学视频。内容是"起势"到"左右野马分鬃"的前 15 秒动作。要求：
 1. 水墨画风格，人物轮廓用毛笔笔触勾勒
@@ -1578,6 +1570,7 @@ mcp_tools:
 ```
 
 **DeerFlow 会自动：**
+
 1. 设计视频分镜脚本（逐帧动作描述）
 2. 生成每帧的水墨风格图像
 3. 如果配置了视频生成工具（如 Runway、Pika、Sora），生成视频片段
