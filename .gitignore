@@ -4,3 +4,9 @@
 .obsidian
 Clippings
 *.code-workspace
+
+# 收藏链接整理
+Bookmarks
+.bookmark_processed.json
+.login_required.json
+.wechat_*.json
